@@ -1,5 +1,5 @@
 const Joi = require("joi");
-const validateIdExistence = require("../../_shared/middlewares/validate/idExist.validate");
+const validateIdExistence = require("../../../_shared/middlewares/validate/idExist.validate");
 const RoleService = require("../../roles/application/role.service");
 
 const roleMessage = "Role id not exist";

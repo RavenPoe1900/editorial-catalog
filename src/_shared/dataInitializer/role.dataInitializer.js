@@ -1,4 +1,4 @@
-const RoleService = require("../../roles/application/role.service");
+const RoleService = require("../../modules/roles/application/role.service");
 const RoleTypeEnum = require("../enum/roles.enum");
 
 async function ensureEmployeeRole() {

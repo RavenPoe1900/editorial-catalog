@@ -10,7 +10,7 @@
  * - includePassword toggles selecting the +password field (assuming password has select: false in schema).
  */
 
-const BaseService = require("../../_shared/service/base.service.js");
+const BaseService = require("../../../_shared/service/base.service.js");
 const User = require("../domain/user.schema.js");
 
 class UserService extends BaseService {

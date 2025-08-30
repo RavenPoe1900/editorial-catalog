@@ -7,8 +7,8 @@
  */
 
 const mongoose = require("mongoose");
-const RoleTypeEnum = require("../../_shared/enum/roles.enum");
-const baseSchema = require("../../_shared/db/baseSchema");
+const RoleTypeEnum = require("../../../_shared/enum/roles.enum");
+const baseSchema = require("../../../_shared/db/baseSchema");
 
 const roleSchema = new mongoose.Schema({
   name: {

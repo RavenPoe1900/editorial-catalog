@@ -8,8 +8,8 @@
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const config = require("../../_shared/config/config");
-const userService = require("../../users/application/user.service");
-const RoleService = require("../../roles/application/role.service");
+const userService = require("../../modules/users/application/user.service");
+const RoleService = require("../../modules/roles/application/role.service");
 const RoleTypeEnum = require("../../_shared/enum/roles.enum");
 const RefreshToken = require("../domain/refresh-token.schema");
 const {

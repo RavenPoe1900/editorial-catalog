@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const baseSchema = require("../../_shared/db/baseSchema");
+const baseSchema = require("../../../_shared/db/baseSchema");
 
 const userSchema = new mongoose.Schema({
   name: { type: String },

@@ -6,7 +6,7 @@
  * - Keeps a single place to add role-related logic in future (permissions, caching, etc.)
  */
 
-const BaseService = require("../../_shared/service/base.service.js");
+const BaseService = require("../../../_shared/service/base.service.js");
 const Role = require("../domain/role.schema.js");
 
 class RoleService extends BaseService {

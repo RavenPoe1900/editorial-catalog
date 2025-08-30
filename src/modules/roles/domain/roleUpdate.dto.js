@@ -1,5 +1,5 @@
 const Joi = require("joi");
-const RoleTypeEnum = require("../../_shared/enum/roles.enum");
+const RoleTypeEnum = require("../../../_shared/enum/roles.enum");
 
 module.exports = Joi.object({
   name: Joi.string()
