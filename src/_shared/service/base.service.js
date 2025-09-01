@@ -50,6 +50,11 @@ class BaseService {
     }
   }
 
+  // Corrección: Implementar el método handleDocumentNotFound que faltaba
+  handleDocumentNotFound() {
+    return { status: 404, error: "Document not found" };
+  }
+
   queryPopulate(populates, selectOptions, query) {
     populates.forEach((populateOptions) => {
       query.populate(populateOptions);
@@ -81,34 +86,40 @@ class BaseService {
     }
   }
 
-  async findAll(page = 0, limit = 250, filters = {}, populateOptions = [], selectOptions = null) {
-  const pageNum = Math.max(0, parseInt(page, 10) || 0); // 0-based
-  const pageSize = Math.min(250, parseInt(limit, 10) || 250);
+  // Mejora: Añadir opción de ordenación
+  async findAll(page = 0, limit = 250, filters = {}, populateOptions = [], selectOptions = null, sort = { createdAt: -1 }) {
+    const pageNum = Math.max(0, parseInt(page, 10) || 0); // 0-based
+    const pageSize = Math.min(250, parseInt(limit, 10) || 250);
 
-  try {
-    let query = this.model.find({ ...filters, deletedAt: null });
+    try {
+      let query = this.model.find({ ...filters, deletedAt: null });
 
-    if ((populateOptions && populateOptions.length) || selectOptions) {
-      query = this.queryPopulate(populateOptions || [], selectOptions || null, query);
+      if ((populateOptions && populateOptions.length) || selectOptions) {
+        query = this.queryPopulate(populateOptions || [], selectOptions || null, query);
+      }
+
+      // Aplicar ordenación
+      if (sort) {
+        query = query.sort(sort);
+      }
+
+      const totalDocs = await this.model.countDocuments({ ...filters, deletedAt: null });
+      const docs = await query.skip(pageNum * pageSize).limit(pageSize).exec();
+
+      return {
+        status: 200,
+        data: docs,
+        pagination: {
+          totalDocs,
+          totalPages: Math.ceil(totalDocs / pageSize),
+          currentPage: pageNum,
+          pageSize,
+        },
+      };
+    } catch (error) {
+      return this.handleError(error);
     }
-
-    const totalDocs = await this.model.countDocuments({ ...filters, deletedAt: null });
-    const docs = await query.skip(pageNum * pageSize).limit(pageSize).exec();
-
-    return {
-      status: 200,
-      data: docs,
-      pagination: {
-        totalDocs,
-        totalPages: Math.ceil(totalDocs / pageSize),
-        currentPage: pageNum,
-        pageSize,
-      },
-    };
-  } catch (error) {
-    return this.handleError(error);
   }
-}
 
   async findById(id, populateOptions = [], selectOptions = null) {
     try {
@@ -193,6 +204,32 @@ class BaseService {
       const deletedDoc = await query.exec();
       if (!deletedDoc) return { status: 404, error: "Document not found" };
       return { status: 200, message: "Document deleted" };
+    } catch (error) {
+      return this.handleError(error);
+    }
+  }
+  
+  // Nueva funcionalidad: operaciones en lote
+  async createMany(dataArray) {
+    try {
+      const result = await this.model.insertMany(dataArray);
+      return { status: 201, data: result, count: result.length };
+    } catch (error) {
+      return this.handleError(error);
+    }
+  }
+  
+  // Nueva funcionalidad: actualización condicional
+  async findOneAndUpdate(filter, updateData, options = { new: true }) {
+    try {
+      const updatedDoc = await this.model.findOneAndUpdate(
+        { ...filter, deletedAt: null },
+        { ...updateData, updatedAt: new Date() },
+        options
+      );
+      
+      if (!updatedDoc && options.new) return { status: 404, error: "Document not found" };
+      return { status: 200, data: updatedDoc };
     } catch (error) {
       return this.handleError(error);
     }
