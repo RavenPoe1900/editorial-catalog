@@ -1,17 +1,26 @@
 const RoleService = require("../../modules/roles/application/role.service");
 const RoleTypeEnum = require("../enum/roles.enum");
 
+/**
+ * Ensure baseline roles exist in DB.
+ * This initializer is idempotent and safe to call at startup.
+ */
 async function ensureEmployeeRole() {
   try {
-    const roles = await RoleService.findOneByCriteria({
-      name: RoleTypeEnum.EMPLOYEE,
-    });
-    if (roles.status !== 200) {
-      await RoleService.create({ name: RoleTypeEnum.EMPLOYEE });
+    const rolesToEnsure = [
+      RoleTypeEnum.EMPLOYEE,
+      RoleTypeEnum.PROVIDER,
+      RoleTypeEnum.EDITOR,
+    ];
+    for (const roleName of rolesToEnsure) {
+      const res = await RoleService.findOneByCriteria({ name: roleName });
+      if (!res || res.status !== 200) {
+        await RoleService.create({ name: roleName });
+      }
     }
   } catch (error) {
-    console.error('Error ensuring "EMPLOYEE" role:', error);
-    throw error; // Propagate the error to handle it in the main application
+    console.error("Error ensuring roles:", error);
+    throw error;
   }
 }
 

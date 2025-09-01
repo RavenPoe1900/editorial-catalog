@@ -1,0 +1,116 @@
+"""
+GS1-like manufacturer info.
+"""
+type Manufacturer {
+  name: String!
+  code: String
+  country: String
+}
+
+"""
+Product entity.
+"""
+type Product {
+  id: ObjectID!
+  gtin: String!
+  name: String!
+  description: String
+  brand: String!
+  manufacturer: Manufacturer!
+  netWeight: Float
+  weightUnit: String
+  status: String!
+  createdBy: User!
+  createdAt: Date
+  updatedAt: Date
+  deletedAt: Date
+  """
+  Change history for this product (latest first).
+  """
+  changes: [ProductChange!]!
+}
+
+"""
+Audit entry for product change.
+"""
+type ProductChange {
+  id: ObjectID!
+  productId: ObjectID!
+  changedBy: User!
+  changedAt: Date!
+  previousValues: String!  # JSON string
+  newValues: String!       # JSON string
+  operation: String!
+}
+
+"""
+Input for creating products.
+"""
+input ProductCreateInput {
+  gtin: String!
+  name: String!
+  description: String
+  brand: String!
+  manufacturer: ManufacturerInput!
+  netWeight: Float
+  weightUnit: String
+}
+
+"""
+Input for updating products.
+"""
+input ProductUpdateInput {
+  gtin: String
+  name: String
+  description: String
+  brand: String
+  manufacturer: ManufacturerInput
+  netWeight: Float
+  weightUnit: String
+}
+
+"""
+Manufacturer input payload.
+"""
+input ManufacturerInput {
+  name: String!
+  code: String
+  country: String
+}
+
+"""
+Filters for listing products.
+"""
+input ProductFilterInput {
+  search: String
+  brand: String
+  status: String
+  createdBy: ObjectID
+}
+
+"""
+Paginated products response.
+"""
+type ProductsPage {
+  items: [Product!]!
+  pageInfo: PageInfo!
+}
+
+extend type Query {
+  product(id: ObjectID!): Product
+    @auth(roles: [ADMIN, MANAGER, EDITOR, PROVIDER])
+
+  products(page: Int = 0, limit: Int = 10, filter: ProductFilterInput): ProductsPage!
+    @auth(roles: [ADMIN, MANAGER, EDITOR, PROVIDER])
+}
+
+extend type Mutation {
+  createProduct(input: ProductCreateInput!): Product!
+    @auth(roles: [EDITOR, PROVIDER])
+
+  updateProduct(id: ObjectID!, input: ProductUpdateInput!): Product!
+    @auth(roles: [EDITOR, PROVIDER])
+
+  approveProduct(id: ObjectID!): Product!
+    @auth(roles: [EDITOR])
+}

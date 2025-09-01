@@ -2,100 +2,104 @@ const mongoose = require("mongoose");
 const baseSchema = require("../../../_shared/db/baseSchema");
 const { ProductStatus, WeightUnit } = require("./product.enum");
 
-const manufacturerSchema = new mongoose.Schema({
-  name: { 
-    type: String, 
-    required: [true, "El nombre del fabricante es obligatorio"]
+/**
+ * Embedded schema for manufacturer details.
+ */
+const manufacturerSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: [true, "El nombre del fabricante es obligatorio"],
+    },
+    code: {
+      type: String,
+      trim: true,
+    },
+    country: {
+      type: String,
+      trim: true,
+    },
   },
-  code: { 
-    type: String,
-    trim: true
-  },
-  country: { 
-    type: String,
-    trim: true
-  }
-}, { _id: false });
+  { _id: false }
+);
 
+/**
+ * Product schema aligned with GS1 concepts.
+ */
 const productSchema = new mongoose.Schema({
-  // Identificador GS1 (GTIN)
-  gtin: { 
-    type: String, 
-    required: [true, "El código GTIN es obligatorio"], 
+  gtin: {
+    type: String,
+    required: [true, "El código GTIN es obligatorio"],
     unique: true,
     trim: true,
     validate: {
-      validator: function(v) {
-        // Validación básica GTIN: numérico, 8-14 dígitos
+      validator: function (v) {
+        // Basic GTIN validation: numeric, 8-14 digits
         return /^\d{8,14}$/.test(v);
       },
-      message: props => `${props.value} no es un GTIN válido (debe ser numérico y tener entre 8-14 dígitos)`
-    }
+      message: (props) =>
+        `${props.value} no es un GTIN válido (debe ser numérico y tener entre 8-14 dígitos)`,
+    },
   },
-  
-  // Información básica del producto
-  name: { 
-    type: String, 
+
+  name: {
+    type: String,
     required: [true, "El nombre del producto es obligatorio"],
     trim: true,
-    index: true
+    index: true,
   },
-  description: { 
+  description: {
     type: String,
     trim: true,
-    index: true
+    index: true,
   },
-  brand: { 
-    type: String, 
+  brand: {
+    type: String,
     required: [true, "La marca es obligatoria"],
     trim: true,
-    index: true
+    index: true,
   },
-  
-  // Información del fabricante
-  manufacturer: { 
-    type: manufacturerSchema, 
-    required: [true, "La información del fabricante es obligatoria"]
+
+  manufacturer: {
+    type: manufacturerSchema,
+    required: [true, "La información del fabricante es obligatoria"],
   },
-  
-  // Peso y unidad
-  netWeight: { 
+
+  netWeight: {
     type: Number,
-    min: [0, "El peso no puede ser negativo"]
+    min: [0, "El peso no puede ser negativo"],
   },
-  weightUnit: { 
+  weightUnit: {
     type: String,
     enum: {
       values: Object.values(WeightUnit),
-      message: "Unidad de peso no válida"
-    }
+      message: "Unidad de peso no válida",
+    },
   },
-  
-  // Estado editorial
-  status: { 
-    type: String, 
+
+  status: {
+    type: String,
     enum: {
       values: Object.values(ProductStatus),
-      message: "Estado de producto no válido"
+      message: "Estado de producto no válido",
     },
     default: ProductStatus.PENDING_REVIEW,
     required: true,
-    index: true
+    index: true,
   },
-  
-  // Relación con el usuario que creó el producto
-  createdBy: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: "User", 
+
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
     required: true,
-    index: true
-  }
+    index: true,
+  },
 });
 
-// Añadir campos base (createdAt, updatedAt, deletedAt)
+// Base timestamps/soft-delete
 productSchema.add(baseSchema);
 
-// Índices compuestos para búsquedas frecuentes
+// Useful indexes
 productSchema.index({ brand: 1, name: 1 });
 productSchema.index({ status: 1, createdAt: -1 });
 
