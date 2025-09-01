@@ -1,0 +1,83 @@
+"""
+System user. It does not expose password nor refreshTokens.
+"""
+type User {
+  id: ObjectID!
+  name: String
+  email: String!
+  phone: String
+  role: Role!
+  lastUsedRole: Role
+  createdAt: Date
+  updatedAt: Date
+  deletedAt: Date
+}
+
+"""
+Input for creating a user.
+"""
+input UserCreateInput {
+  name: String!
+  email: String!
+  password: String!
+  role: ObjectID!
+  phone: String
+}
+
+"""
+Input for updating a user.
+"""
+input UserUpdateInput {
+  name: String
+  email: String
+  password: String
+  role: ObjectID
+  phone: String
+}
+
+"""
+Supported user filters.
+"""
+input UserFilterInput {
+  search: String
+  role: ObjectID
+  email: String
+}
+
+"""
+Paginated users response.
+"""
+type UsersPage {
+  items: [User!]!
+  pageInfo: PageInfo!
+}
+
+extend type Query {
+  """
+  Get a user by ID.
+  """
+  user(id: ObjectID!): User @auth(roles: [ADMIN, MANAGER])
+
+  """
+  List users with pagination and filters.
+  """
+  users(page: Int = 0, limit: Int = 10, filter: UserFilterInput): UsersPage!
+    @auth(roles: [ADMIN, MANAGER])
+}
+
+extend type Mutation {
+  """
+  Create a new user.
+  """
+  createUser(input: UserCreateInput!): User! @auth(roles: [ADMIN, MANAGER])
+
+  """
+  Update a user by ID.
+  """
+  updateUser(id: ObjectID!, input: UserUpdateInput!): User! @auth(roles: [ADMIN, MANAGER])
+
+  """
+  Soft delete a user by ID.
+  """
+  softDeleteUser(id: ObjectID!): User! @auth(roles: [ADMIN, MANAGER])
+}

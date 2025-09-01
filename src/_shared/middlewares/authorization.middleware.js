@@ -1,5 +1,5 @@
-const User = require("../../users/application/user.service");
-const userPopulate = require("../../users/domain/user.populate");
+const User = require("../../modules/users/application/user.service");
+const userPopulate = require("../../modules/users/domain/user.populate");
 
 module.exports = (allowedRoles) => {
   return async (req, res, next) => {

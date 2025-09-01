@@ -1,0 +1,54 @@
+"""
+System role.
+"""
+type Role {
+  id: ObjectID!
+  name: String!
+  createdAt: Date
+  updatedAt: Date
+  deletedAt: Date
+}
+
+"""
+Input for creating a role.
+"""
+input RoleCreateInput {
+  name: String!
+}
+
+"""
+Input for updating a role.
+"""
+input RoleUpdateInput {
+  name: String
+}
+
+"""
+Supported role filters.
+"""
+input RoleFilterInput {
+  search: String
+  name: String
+}
+
+"""
+Paginated roles response.
+"""
+type RolesPage {
+  items: [Role!]!
+  pageInfo: PageInfo!
+}
+
+extend type Query {
+  role(id: ObjectID!): Role @auth(roles: [ADMIN, MANAGER, EMPLOYEE])
+  roles(page: Int = 0, limit: Int = 10, filter: RoleFilterInput): RolesPage!
+    @auth(roles: [ADMIN, MANAGER, EMPLOYEE])
+}
+
+extend type Mutation {
+  createRole(input: RoleCreateInput!): Role! @auth(roles: [ADMIN, MANAGER, EMPLOYEE])
+  updateRole(id: ObjectID!, input: RoleUpdateInput!): Role!
+    @auth(roles: [ADMIN, MANAGER, EMPLOYEE])
+  softDeleteRole(id: ObjectID!): Role! @auth(roles: [ADMIN, MANAGER, EMPLOYEE])
+  deleteRolePermanent(id: ObjectID!): Boolean! @auth(roles: [ADMIN, MANAGER, EMPLOYEE])
+}

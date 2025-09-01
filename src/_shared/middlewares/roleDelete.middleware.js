@@ -1,4 +1,4 @@
-const UserService = require("../../users/application/user.service");
+const UserService = require("../../modules/users/application/user.service");
 
 module.exports = async (req, res, next) => {
   const roleId = req.params.id;
