@@ -3,7 +3,6 @@ const crypto = require("crypto");
 const config = require("../../_shared/config/config");
 const userService = require("../../modules/users/application/user.service");
 const RoleService = require("../../modules/roles/application/role.service");
-const RoleTypeEnum = require("../../_shared/enum/roles.enum");
 const RefreshToken = require("../domain/refresh-token.schema");
 const { hashPassword, comparePassword } = require("../../_shared/hash/password.hash");
 const userPopulate = require("../../modules/users/domain/user.populate");
@@ -36,40 +35,60 @@ const generateRefreshToken = async (userId) => {
 };
 
 /**
- * Register a new user with EMPLOYEE role and issue tokens.
+ * Register a new user with a specific role and issue tokens.
+ * Acepta el objeto 'input' completo: { email, password, name, role }
+ * Devuelve: { accessToken, refreshToken, user }
  */
-exports.register = async (email, password) => {
+exports.register = async (input) => {
   try {
+    const { email, password, name, role } = input;
+
     const existing = await userService.findByEmail(email);
     if (existing && existing.status === 200) {
       return { status: 400, error: "User already exists" };
     }
 
     const hash = await hashPassword(password);
+
+    // Busca el rol por nombre de forma case-insensitive
     const roleRes = await RoleService.findOneByCriteria({
-      name: RoleTypeEnum.EMPLOYEE,
+      name: new RegExp(`^${role}$`, "i"),
     });
-
     if (!roleRes || roleRes.status !== 200) {
-      return { status: 500, error: "Server error" };
+      return { status: 404, error: `Role '${role}' not found` };
     }
+    const roleId = roleRes.data._id;
 
+    // Crea el usuario con todos los datos
     const userRes = await userService.create({
       email,
       password: hash,
-      role: roleRes.data._id,
+      name,
+      role: roleId,
     });
     if (!userRes || userRes.status !== 201) {
       return { status: 500, error: "Could not create user" };
     }
 
-    const payload = { userId: userRes.data._id, role: RoleTypeEnum.EMPLOYEE };
+    // Obtiene el usuario completo con populate (sin password)
+    const populatedUserRes = await userService.findById(
+      userRes.data._id,
+      userPopulate,
+      "-password"
+    );
+    if (!populatedUserRes || populatedUserRes.status !== 200) {
+      return { status: 500, error: "Could not load created user" };
+    }
+    const user = populatedUserRes.data;
+
+    // Genera tokens incluyendo el nombre del rol en el access token
+    const payload = { userId: user._id, role: user.role?.name || null };
     const accessToken = jwt.sign(payload, config.JWT.key, {
       expiresIn: config.JWT.expires,
     });
-    const refreshToken = await generateRefreshToken(userRes.data._id);
+    const refreshToken = await generateRefreshToken(user._id);
 
-    return { status: 201, data: { accessToken, refreshToken } };
+    return { status: 201, data: { accessToken, refreshToken, user } };
   } catch (error) {
     console.error("Auth register error:", error);
     return { status: 500, error: "Server error" };
@@ -78,6 +97,7 @@ exports.register = async (email, password) => {
 
 /**
  * Authenticate a user, verify password and issue tokens.
+ * Devuelve: { accessToken, refreshToken, user }
  */
 exports.login = async (email, password) => {
   try {
@@ -85,27 +105,32 @@ exports.login = async (email, password) => {
     if (!userRes || userRes.status !== 200) {
       return { status: 400, error: "Invalid credentials" };
     }
-    const user = userRes.data;
-    const isMatch = await comparePassword(password, user.password);
+    const userRaw = userRes.data;
+
+    const isMatch = await comparePassword(password, userRaw.password);
     if (!isMatch) {
       return { status: 400, error: "Invalid credentials" };
     }
 
-    // Include role in the access token payload
+    // Recarga el usuario con populate (sin password)
     const fullUserRes = await userService.findById(
-      user._id,
+      userRaw._id,
       userPopulate,
       "-password"
     );
-    const roleName = fullUserRes?.data?.role?.name || null;
+    if (!fullUserRes || fullUserRes.status !== 200) {
+      return { status: 404, error: "User not found" };
+    }
+    const user = fullUserRes.data;
 
+    const roleName = user.role?.name || null;
     const payload = { userId: user._id, role: roleName };
     const accessToken = jwt.sign(payload, config.JWT.key, {
       expiresIn: config.JWT.expires,
     });
     const refreshToken = await generateRefreshToken(user._id);
 
-    return { status: 200, data: { accessToken, refreshToken } };
+    return { status: 200, data: { accessToken, refreshToken, user } };
   } catch (error) {
     console.error("Auth login error:", error);
     return { status: 500, error: "Server error" };
@@ -114,9 +139,7 @@ exports.login = async (email, password) => {
 
 /**
  * Rotate a refresh token:
- * - Verify signature and extract { jti, userId }.
- * - Ensure token record exists and is not revoked/expired.
- * - Revoke current token and issue a new pair (access + refresh).
+ * Devuelve: { accessToken, refreshToken, user }
  */
 exports.refreshToken = async (refreshToken) => {
   try {
@@ -137,9 +160,11 @@ exports.refreshToken = async (refreshToken) => {
       return { status: 401, error: "Invalid or expired refresh token" };
     }
 
+    // Revoke current refresh token
     stored.revokedAt = new Date();
     await stored.save();
 
+    // Load user populated
     const fullUserRes = await userService.findById(
       userId,
       userPopulate,
@@ -148,19 +173,21 @@ exports.refreshToken = async (refreshToken) => {
     if (!fullUserRes || fullUserRes.status !== 200) {
       return { status: 404, error: "User not found" };
     }
+    const user = fullUserRes.data;
 
+    // Issue new pair
     const payload = {
-      userId: fullUserRes.data._id,
-      role: fullUserRes.data?.role?.name || null,
+      userId: user._id,
+      role: user.role?.name || null,
     };
     const newAccessToken = jwt.sign(payload, config.JWT.key, {
       expiresIn: config.JWT.expires,
     });
-    const newRefreshToken = await generateRefreshToken(fullUserRes.data._id);
+    const newRefreshToken = await generateRefreshToken(user._id);
 
     return {
       status: 200,
-      data: { accessToken: newAccessToken, refreshToken: newRefreshToken },
+      data: { accessToken: newAccessToken, refreshToken: newRefreshToken, user },
     };
   } catch (err) {
     if (err.name === "TokenExpiredError" || err.name === "JsonWebTokenError") {
@@ -172,7 +199,7 @@ exports.refreshToken = async (refreshToken) => {
 };
 
 /**
- * Get user by ID (used by me query).
+ * Get user by ID (used by 'me' query).
  */
 exports.getUser = async (userId) => {
   try {

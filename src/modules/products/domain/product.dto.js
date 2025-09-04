@@ -4,6 +4,7 @@
  */
 
 const Joi = require("joi");
+const { isValidGTIN } = require("./gtin.util");
 
 const manufacturerSchema = Joi.object({
   name: Joi.string().trim().min(2).required(),
@@ -13,10 +14,19 @@ const manufacturerSchema = Joi.object({
 
 module.exports = Joi.object({
   gtin: Joi.string()
-    .pattern(/^\d{8,14}$/)
+    .trim()
+    .pattern(/^\d{8}$|^\d{12}$|^\d{13}$|^\d{14}$/)
+    .custom((value, helpers) => {
+      if (!isValidGTIN(value)) {
+        return helpers.error("any.invalid", { message: "Invalid GTIN check digit" });
+      }
+      return value;
+    }, "GTIN check digit validation")
     .required()
     .messages({
-      "string.pattern.base": "gtin must be numeric with 8-14 digits",
+      "string.pattern.base": "gtin must be numeric and 8, 12, 13 or 14 digits",
+      "any.invalid": "gtin has an invalid check digit",
+      "any.required": "gtin is required",
     }),
   name: Joi.string().trim().min(2).required(),
   description: Joi.string().trim().allow("").optional(),
