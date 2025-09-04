@@ -6,6 +6,7 @@ const RoleTypeEnum = require("../enum/roles.enum");
  * This initializer is idempotent and safe to call at startup.
  */
 async function ensureEmployeeRole() {
+  // console.log("DEBUG: Entrando a ensureEmployeeRole"); // <--- Añade esto si quieres
   try {
     const rolesToEnsure = [
       RoleTypeEnum.EMPLOYEE,
@@ -13,6 +14,7 @@ async function ensureEmployeeRole() {
       RoleTypeEnum.EDITOR,
     ];
     for (const roleName of rolesToEnsure) {
+      // ESTA ES LA LÍNEA QUE BLOQUEA
       const res = await RoleService.findOneByCriteria({ name: roleName });
       if (!res || res.status !== 200) {
         await RoleService.create({ name: roleName });
@@ -22,6 +24,7 @@ async function ensureEmployeeRole() {
     console.error("Error ensuring roles:", error);
     throw error;
   }
+  // console.log("DEBUG: Saliendo de ensureEmployeeRole"); // <--- Y esto
 }
 
 module.exports = { ensureEmployeeRole };

@@ -1,5 +1,5 @@
 const AuthService = require("../application/auth.service");
-const authDto = require("../domain/auth.dto");
+const { loginDto, registerDto } = require("../domain/auth.dto");
 const userService = require("../../modules/users/application/user.service");
 const userPopulate = require("../../modules/users/domain/user.populate");
 const { unwrap } = require("../../graphql/error.utils");
@@ -8,8 +8,8 @@ const selectOptions = "-password -tests";
 
 /**
  * Auth resolvers:
- * - register/login return access + refresh tokens.
- * - refreshToken rotates the refresh token.
+ * - register/login return access + refresh tokens and the current user.
+ * - refreshToken rotates the refresh token and returns user.
  * - me returns the current user (requires @auth).
  */
 module.exports = {
@@ -31,13 +31,19 @@ module.exports = {
 
   Mutation: {
     register: async (_p, { input }, _ctx) => {
-      await authDto.validateAsync(input, { abortEarly: false });
-      const result = await AuthService.register(input.email, input.password);
+      // Validación del input de registro
+      if (registerDto?.validateAsync) {
+        await registerDto.validateAsync(input, { abortEarly: false });
+      }
+      const result = await AuthService.register(input);
       return unwrap(result, "Failed to register");
     },
 
     login: async (_p, { input }, _ctx) => {
-      await authDto.validateAsync(input, { abortEarly: false });
+      // Validación del input de login
+      if (loginDto?.validateAsync) {
+        await loginDto.validateAsync(input, { abortEarly: false });
+      }
       const result = await AuthService.login(input.email, input.password);
       return unwrap(result, "Failed to login");
     },
@@ -46,5 +52,10 @@ module.exports = {
       const result = await AuthService.refreshToken(refreshToken);
       return unwrap(result, "Failed to refresh token");
     },
+  },
+
+  // Resolver de campo para incluir el usuario en la respuesta
+  AuthTokens: {
+    user: (parent) => parent.user,
   },
 };

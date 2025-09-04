@@ -1,17 +1,33 @@
 """
 Tokens returned by authentication flows.
+Includes the user object for convenience.
 """
 type AuthTokens {
   accessToken: String!
   refreshToken: String!
+  """
+  The user associated with the tokens.
+  """
+  user: User!
 }
 
 """
-Input for authentication.
+Input for user login.
 """
 input AuthInput {
   email: String!
   password: String!
+}
+
+"""
+Input for new user registration.
+Includes all required fields to create a user.
+"""
+input RegisterInput {
+  email: String!
+  password: String!
+  name: String!
+  role: String!
 }
 
 extend type Query {
@@ -25,10 +41,10 @@ extend type Mutation {
   """
   Register a new user and issue tokens.
   """
-  register(input: AuthInput!): AuthTokens!
+  register(input: RegisterInput!): AuthTokens!
 
   """
-  Login an existing user and issue tokens.
+  Login an existing user and issue tokens, including the user's data.
   """
   login(input: AuthInput!): AuthTokens!
 

@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const baseSchema = require("../../../_shared/db/baseSchema");
 const { ProductStatus, WeightUnit } = require("./product.enum");
+const { isValidGTIN } = require("./gtin.util");
 
 /**
  * Embedded schema for manufacturer details.
@@ -32,14 +33,22 @@ const productSchema = new mongoose.Schema({
     required: [true, "El código GTIN es obligatorio"],
     unique: true,
     trim: true,
-    validate: {
-      validator: function (v) {
-        // Basic GTIN validation: numeric, 8-14 digits
-        return /^\d{8,14}$/.test(v);
+    validate: [
+      {
+        validator: function (v) {
+          // Strict numeric and allowed lengths
+          return /^\d{8}$|^\d{12}$|^\d{13}$|^\d{14}$/.test(v);
+        },
+        message:
+          "GTIN inválido: debe ser numérico con 8, 12, 13 o 14 dígitos",
       },
-      message: (props) =>
-        `${props.value} no es un GTIN válido (debe ser numérico y tener entre 8-14 dígitos)`,
-    },
+      {
+        validator: function (v) {
+          return isValidGTIN(v);
+        },
+        message: "GTIN inválido: dígito verificador incorrecto",
+      },
+    ],
   },
 
   name: {

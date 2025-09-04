@@ -1,32 +1,34 @@
 /**
- * Service layer for Product model with editorial workflow and auditing:
- * - createWithRole: create product with status based on role (provider/editor)
- * - updateWithAudit: update fields with permission checks and audit trail
- * - approvePending: editor-only status change from pending to published
- * - findAllWithFilters: textual search on name/brand/description and other filters
- *
- * Note: later you can emit domain events here (TODO) to integrate a message bus/ES indexer.
+ * Service layer for Product model with editorial workflow, auditing,
+ * RabbitMQ events and Elasticsearch indexing.
  */
 
 const BaseService = require("../../../_shared/service/base.service");
 const Product = require("../domain/product.schema");
 const RoleTypeEnum = require("../../../_shared/enum/roles.enum");
-const ProductChangeService = require("./../../product-changes/application/product-changes.service");
+const ProductChangeService = require("../../product-changes/application/product-changes.service");
 const { ProductStatus } = require("../domain/product.enum");
 const { computeAuditDiff } = require("./diff.util");
+const { publish: publishEvent } = require("../../../_shared/integrations/rabbitmq/rabbitmq");
+const { upsertProduct } = require("../../../_shared/integrations/elasticsearch/es.product.indexer");
 
 class ProductService extends BaseService {
   constructor() {
     super(Product);
   }
 
-  /**
-   * Create a product with role-aware initial status and audit the creation.
-   * @param {{ userId: string, role?: string }} actor
-   * @param {object} input - Product payload
-   * @param {Array} populateOptions
-   * @param {string|null} selectOptions
-   */
+  buildEventEnvelope(type, aggregateId, data, actor) {
+    return {
+      id: `${type}:${aggregateId}:${Date.now()}`,
+      type, // e.g., product.created
+      occurredAt: new Date().toISOString(),
+      aggregateType: "Product",
+      aggregateId: String(aggregateId),
+      actor: actor?.userId ? String(actor.userId) : null,
+      data,
+    };
+  }
+
   async createWithRole(actor, input, populateOptions = [], selectOptions = null) {
     try {
       const role = (actor?.role || "").toLowerCase();
@@ -61,7 +63,16 @@ class ProductService extends BaseService {
         }
       );
 
-      // TODO: emit domain event "product.created" for future bus/ES sync
+      // Publish event (best-effort)
+      const evt = this.buildEventEnvelope("product.created", created.data._id, {
+        productId: String(created.data._id),
+        status: created.data.status,
+        gtin: created.data.gtin,
+      }, actor);
+      publishEvent("product.created", evt);
+
+      // Update search index (best-effort)
+      upsertProduct(created.data);
 
       return created;
     } catch (error) {
@@ -69,17 +80,6 @@ class ProductService extends BaseService {
     }
   }
 
-  /**
-   * Update a product with role-based permission checks and audit trail.
-   * - provider: can only update own products while status is PENDING_REVIEW.
-   * - editor: can update any product.
-   * - Status changes should be done via approvePending (editor-only).
-   * @param {{ userId: string, role?: string }} actor
-   * @param {string} id - Product id
-   * @param {object} updates - Partial update payload (business fields)
-   * @param {Array} populateOptions
-   * @param {string|null} selectOptions
-   */
   async updateWithAudit(actor, id, updates, populateOptions = [], selectOptions = null) {
     try {
       const role = (actor?.role || "").toLowerCase();
@@ -120,7 +120,15 @@ class ProductService extends BaseService {
 
       await ProductChangeService.createAudit(id, actor.userId, "UPDATE", previous, next);
 
-      // TODO: emit domain event "product.updated" for future bus/ES sync
+      // Publish event
+      const evt = this.buildEventEnvelope("product.updated", id, {
+        productId: String(id),
+        changed: Object.keys(updates),
+      }, actor);
+      publishEvent("product.updated", evt);
+
+      // Update search index
+      upsertProduct(updated.data);
 
       return updated;
     } catch (error) {
@@ -128,13 +136,6 @@ class ProductService extends BaseService {
     }
   }
 
-  /**
-   * Editor-only approval flow: set status from PENDING_REVIEW to PUBLISHED and audit.
-   * @param {{ userId: string, role?: string }} actor
-   * @param {string} id - Product id
-   * @param {Array} populateOptions
-   * @param {string|null} selectOptions
-   */
   async approvePending(actor, id, populateOptions = [], selectOptions = null) {
     try {
       const role = (actor?.role || "").toLowerCase();
@@ -167,7 +168,15 @@ class ProductService extends BaseService {
         { status: ProductStatus.PUBLISHED }
       );
 
-      // TODO: emit domain event "product.approved" for future bus/ES sync
+      // Publish event
+      const evt = this.buildEventEnvelope("product.approved", id, {
+        productId: String(id),
+        status: ProductStatus.PUBLISHED,
+      }, actor);
+      publishEvent("product.approved", evt);
+
+      // Update search index
+      upsertProduct(updated.data);
 
       return updated;
     } catch (error) {
@@ -175,19 +184,6 @@ class ProductService extends BaseService {
     }
   }
 
-  /**
-   * Find all products with business-friendly filters and simple text search.
-   * - search: matches name/brand/description (case-insensitive, partial)
-   * - brand: exact match
-   * - status: exact match
-   * - createdBy: by user id
-   * @param {number} page
-   * @param {number} limit
-   * @param {{ search?: string, brand?: string, status?: string, createdBy?: string }} filter
-   * @param {Array} populateOptions
-   * @param {string|null} selectOptions
-   * @param {object} sort
-   */
   async findAllWithFilters(
     page = 0,
     limit = 10,
