@@ -1,10 +1,24 @@
+/**
+ * @fileoverview Recursive route discovery (original minimal variant).
+ *
+ * NOTE:
+ *  - There is an enhanced version elsewhere; retain this only if other components still import it.
+ *  - Consider merging with enhanced findRoutes for consistency.
+ *
+ * Behavior:
+ *  - Scans for directories matching folderName.
+ *  - Inside those, collects files ending with fileName (exact suffix).
+ *
+ * Limitations:
+ *  - Synchronous FS operations (acceptable at startup).
+ *  - No glob support, no caching, no error escalation.
+ */
 const fs = require("fs");
 const path = require("path");
 
 const findRoutes = (dir, folderName, fileName) => {
   const results = [];
 
-  // Función recursiva para explorar directorios
   const exploreDirectory = (currentDir) => {
     try {
       const list = fs.readdirSync(currentDir);
@@ -13,7 +27,6 @@ const findRoutes = (dir, folderName, fileName) => {
         const stat = fs.statSync(filePath);
         if (stat.isDirectory()) {
           if (file === folderName) {
-            // Buscar archivos .route.js en la carpeta 'infrastructure'
             const infraFiles = fs.readdirSync(filePath);
             infraFiles.forEach((infraFile) => {
               if (infraFile.endsWith(fileName)) {

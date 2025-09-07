@@ -1,19 +1,19 @@
 /**
- * Enumeración de roles de usuario en el sistema
- * @readonly
- * @enum {string}
+ * @fileoverview Alternate uppercase role enumeration (potential duplication).
+ *
+ * WARNING:
+ *  - Having both lowercase and uppercase role enums risks mismatches and logic bugs.
+ *  - Audit code base for places relying on one variant vs the other.
+ *
+ * Suggestion:
+ *  - Standardize on ONE representation internally (e.g., store lowercase in DB, map to uppercase in API).
  */
 const RoleType = Object.freeze({
-  /** Administrador del sistema */
   ADMIN: "ADMIN",
-  /** Gerente con permisos amplios */
   MANAGER: "MANAGER",
-  /** Empleado con permisos básicos */
   EMPLOYEE: "EMPLOYEE",
-  /** Proveedor que puede crear productos */
   PROVIDER: "PROVIDER",
-  /** Editor que puede revisar y aprobar productos */
-  EDITOR: "EDITOR"
+  EDITOR: "EDITOR",
 });
 
 module.exports = RoleType;

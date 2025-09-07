@@ -1,4 +1,18 @@
 /**
+ * @fileoverview Swagger specification for Role endpoints.
+ *
+ * Coverage:
+ *  - CRUD + soft delete + permanent delete
+ *
+ * Notes:
+ *  - Soft delete sets deletedAt; list endpoints should exclude logically deleted roles.
+ *  - Permanent delete fully removes the document.
+ *
+ * Future:
+ *  - Add filtering by createdAt range.
+ *  - Add role description property to schema.
+ */
+/**
  * @swagger
  * tags:
  *   - name: Roles
@@ -13,7 +27,7 @@
  *       properties:
  *         name:
  *           type: string
- *           enum: [admin, manager, employee]
+ *           enum: [admin, manager, employee, provider, editor]
  *           example: admin
  *
  *     RoleResponse:
@@ -78,7 +92,7 @@
  *           schema:
  *             type: object
  *             properties:
- *               name: { type: string, enum: [admin, manager, employee] }
+ *               name: { type: string, enum: [admin, manager, employee, provider, editor] }
  *     responses:
  *       '200': { description: updated }
  *

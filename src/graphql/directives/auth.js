@@ -1,24 +1,28 @@
+/**
+ * @fileoverview @auth directive implementation.
+ *
+ * Responsibilities:
+ *  - Enforce authentication (presence of ctx.user).
+ *  - Optionally enforce role-based authorization (roles: [RoleName]).
+ *
+ * Design Choices:
+ *  - Implemented as schema transformer to wrap field resolvers.
+ *  - Role comparison normalized to lowercase to avoid casing issues.
+ *
+ * Error Contract:
+ *  - Throws Error with .status and .code for downstream formatError handling.
+ *
+ * Future:
+ *  - Expand to accept mode: ANY|ALL for role arrays.
+ *  - Integrate with permissions matrix or policy engine.
+ */
 const { mapSchema, getDirective, MapperKind } = require("@graphql-tools/utils");
 const { defaultFieldResolver } = require("graphql");
 
-/**
- * SDL for the @auth directive.
- * Usage:
- *   type Query {
- *     me: User @auth
- *     users: [User!]! @auth(roles: [ADMIN, MANAGER])
- *   }
- */
 const authDirectiveSDL = /* GraphQL */ `
   directive @auth(roles: [RoleName!]) on OBJECT | FIELD_DEFINITION
 `;
 
-/**
- * Schema transformer that wraps resolvers to enforce:
- * - Authentication when @auth is present.
- * - Optional role-based authorization when roles are provided.
- * Expects ctx.user = { userId, roles: [string] } or null.
- */
 function makeAuthDirectiveTransformer() {
   return (schema) =>
     mapSchema(schema, {
@@ -30,7 +34,6 @@ function makeAuthDirectiveTransformer() {
         const { roles = [] } = directives[0] || {};
 
         fieldConfig.resolve = async function (source, args, ctx, info) {
-          // Authentication required
           if (!ctx?.user) {
             const err = new Error("Unauthenticated");
             err.status = 401;
@@ -38,24 +41,25 @@ function makeAuthDirectiveTransformer() {
             throw err;
           }
 
-          // Role-based authorization if roles specified
-          const required = (roles || []).map((r) => String(r).toLowerCase());
-          if (required.length > 0) {
-            const userRoles = Array.from(
-              new Set(
-                (ctx.user.roles || [])
-                  .filter(Boolean)
-                  .map((x) => String(x).toLowerCase())
-              )
+            const required = (roles || []).map((r) =>
+              String(r).toLowerCase()
             );
-            const ok = userRoles.some((r) => required.includes(r));
-            if (!ok) {
-              const err = new Error("Forbidden");
-              err.status = 403;
-              err.code = "FORBIDDEN";
-              throw err;
+            if (required.length > 0) {
+              const userRoles = Array.from(
+                new Set(
+                  (ctx.user.roles || [])
+                    .filter(Boolean)
+                    .map((x) => String(x).toLowerCase())
+                )
+              );
+              const ok = userRoles.some((r) => required.includes(r));
+              if (!ok) {
+                const err = new Error("Forbidden");
+                err.status = 403;
+                err.code = "FORBIDDEN";
+                throw err;
+              }
             }
-          }
 
           return resolve.call(this, source, args, ctx, info);
         };

@@ -1,6 +1,29 @@
-console.log("INICIANDO: Cargando módulos principales...");
+/**
+ * @fileoverview Application entry point with graceful shutdown for
+ * HTTP + MongoDB + RabbitMQ + Elasticsearch. All environment access is
+ * centralized via config.*
+ *
+ * Startup flow:
+ *  1. Connect MongoDB (fail-fast)
+ *  2. Initialize Express + core middlewares
+ *  3. Register basic health endpoint
+ *  4. Mount GraphQL
+ *  5. Register global error handler
+ *  6. Launch background initializers (non-blocking)
+ *  7. Start HTTP server
+ *
+ * Graceful shutdown:
+ *  - Signals: SIGINT, SIGTERM, SIGUSR2 (nodemon), unhandledRejection, uncaughtException
+ *  - Order: HTTP -> RabbitMQ -> Elasticsearch -> MongoDB
+ *  - Max duration configurable (config.SERVER.gracefulTimeoutMs)
+ *
+ * Notes:
+ *  - SIGUSR2 is re-fired for nodemon restarts
+ *  - Avoid calling process.exit() deep in the codebase; handle here
+ */
+console.log("BOOT: loading core modules...");
 
-const http = require('http');
+const http = require("http");
 const express = require("express");
 const MongoDb = require("./_shared/db/mongoConnect.js");
 const cors = require("cors");
@@ -9,48 +32,46 @@ const config = require("./_shared/config/config.js");
 const { logger } = require("./_shared/utils/logger.js");
 const errorHandler = require("./_shared/middlewares/errorHandle.middleware.js");
 
-// Cargadores de lógica de negocio y GraphQL
 const { setupGraphQL } = require("./graphql/index");
 const { ensureEmployeeRole } = require("./_shared/dataInitializer/role.dataInitializer.js");
 const { ensureSearchAndBus } = require("./_shared/dataInitializer/searchAndBus.initializer");
 const { registerCleanupJob } = require("./_shared/jobs/refreshTokenCleanup.job");
+const { closeRabbitMQ } = require("./_shared/integrations/rabbitmq/rabbitmq");
+const { closeES } = require("./_shared/integrations/elasticsearch/es.client");
 
-const PORT = config.PORT || 3015;
+const PORT = config.SERVER.port;
+const GRACEFUL_TIMEOUT_MS = config.SERVER.gracefulTimeoutMs;
 
-/**
- * Función principal que arranca la aplicación.
- * Sigue un flujo estricto:
- * 1. Conectar dependencias críticas (DB).
- * 2. Crear y configurar la app Express.
- * 3. Iniciar tareas de fondo (no bloqueantes).
- * 4. Crear el servidor HTTP y empezar a escuchar.
- */
+let serverRef = null;
+let mongoDbInstance = null;
+let shuttingDown = false;
+let shutdownTimer = null;
+
 async function main() {
-  console.log("MAIN: Iniciando secuencia de arranque...");
+  console.log("MAIN: starting bootstrap sequence...");
 
-  // --- 1. CONECTAR DEPENDENCIAS CRÍTICAS ---
+  // 1. Critical DB
   try {
-    console.log("MAIN: Conectando a MongoDB...");
-    const mongoDb = new MongoDb();
-    await mongoDb.connect();
-    console.log("MAIN: Conexión a MongoDB exitosa.");
+    console.log("MAIN: connecting MongoDB...");
+    mongoDbInstance = new MongoDb();
+    await mongoDbInstance.connect();
+    console.log("MAIN: MongoDB connected.");
   } catch (dbError) {
-    console.error("ERROR FATAL: No se pudo conectar a la base de datos.", dbError);
-    process.exit(1); // Salir si la DB no está disponible
+    console.error("FATAL: MongoDB connection failed.", dbError);
+    process.exit(1);
   }
 
-  // --- 2. CREAR Y CONFIGURAR LA APP EXPRESS ---
+  // 2. Express app
   const app = express();
-  console.log("MAIN: Instancia de Express creada.");
+  console.log("MAIN: Express instance created.");
 
-  // Middlewares esenciales (se aplican en orden)
-  app.use(cors({ origin: process.env.CORS_ORIGIN || true, credentials: true }));
+  app.use(cors({ origin: config.SERVER.corsOrigin, credentials: true }));
   app.use(cookieParser());
   app.use(express.json({ limit: "5mb" }));
   app.use(express.urlencoded({ extended: false }));
-  
-  // Endpoint de diagnóstico vital
-  app.get("/_health", (req, res) => {
+
+  // 3. Health endpoint (lightweight)
+  app.get("/_health", (_req, res) => {
     res.status(200).json({
       status: "ok",
       uptime: process.uptime(),
@@ -58,54 +79,127 @@ async function main() {
     });
   });
 
-  // Configurar GraphQL. La función ahora solo adjunta las rutas a la app.
-  console.log("MAIN: Configurando GraphQL...");
-  await setupGraphQL(app); // Esperamos a que el schema se construya
-  console.log("MAIN: GraphQL configurado y rutas adjuntas.");
+  // 4. GraphQL
+  console.log("MAIN: setting up GraphQL...");
+  await setupGraphQL(app);
+  console.log("MAIN: GraphQL mounted.");
 
-  // Middleware de manejo de errores (debe ir al final)
+  // 5. Error handler
   app.use(errorHandler);
-  console.log("MAIN: Middleware de errores final registrado.");
+  console.log("MAIN: Global error handler registered.");
 
-  // --- 3. INICIAR TAREAS DE FONDO ---
-  // Estas tareas se inician pero no bloquean el arranque del servidor.
-  ensureEmployeeRole().catch(err => console.error("Error en la inicialización de roles:", err));
-  ensureSearchAndBus().catch(err => console.error("Error en la inicialización de Search/Bus:", err));
+  // 6. Background initializers (non-blocking)
+  ensureEmployeeRole().catch((err) =>
+    console.error("Role initialization error:", err)
+  );
+  ensureSearchAndBus().catch((err) =>
+    console.error("Search/Bus initialization error:", err)
+  );
   registerCleanupJob();
-  console.log("MAIN: Tareas de fondo iniciadas.");
+  console.log("MAIN: background tasks triggered.");
 
-  // --- 4. CREAR SERVIDOR HTTP Y ESCUCHAR ---
-  const server = http.createServer(app);
-  console.log("MAIN: Servidor HTTP creado.");
+  // 7. HTTP server
+  serverRef = http.createServer(app);
 
-  server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-      console.error(`ERROR FATAL: El puerto ${PORT} ya está en uso.`);
+  serverRef.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(`FATAL: Port ${PORT} already in use.`);
       process.exit(1);
     } else {
-      console.error("Error en el servidor HTTP:", err);
+      console.error("HTTP server error:", err);
     }
   });
 
-  server.listen(PORT, () => {
+  serverRef.listen(PORT, () => {
     console.log("=====================================================");
-    console.log(`🚀 SERVIDOR LISTO Y ESCUCHANDO EN EL PUERTO ${PORT}`);
-    console.log(`✅ Endpoint de salud: http://localhost:${PORT}/_health`);
-    console.log(`✅ Playground de GraphQL: http://localhost:${PORT}/graphiql`);
+    console.log(`🚀 Server listening on port ${PORT}`);
+    console.log(`✅ Health:   http://localhost:${PORT}/_health`);
+    console.log(`✅ GraphiQL: http://localhost:${PORT}/graphiql`);
     console.log("=====================================================");
-    logger(`Servidor iniciado en modo: ${process.env.NODE_ENV || 'development'}`);
+    logger(`Server started in mode: ${config.SERVER.nodeEnv}`);
   });
 }
 
-// --- PUNTO DE ENTRADA ---
-// Captura de errores globales para mayor estabilidad.
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('ERROR GRAVE: Unhandled Rejection at:', promise, 'reason:', reason);
+/**
+ * Close MongoDB connection if open.
+ */
+async function closeMongo() {
+  if (
+    mongoDbInstance?.mongoose?.connection &&
+    mongoDbInstance.mongoose.connection.readyState === 1
+  ) {
+    try {
+      await mongoDbInstance.mongoose.disconnect();
+      console.log("[SHUTDOWN] MongoDB disconnected");
+    } catch (err) {
+      console.warn("[SHUTDOWN] MongoDB disconnect error:", err.message);
+    }
+  }
+}
+
+/**
+ * Close HTTP server (does not force open sockets).
+ */
+function closeHttpServer() {
+  return new Promise((resolve) => {
+    if (!serverRef) return resolve();
+    serverRef.close(() => {
+      console.log("[SHUTDOWN] HTTP server closed");
+      resolve();
+    });
+  });
+}
+
+/**
+ * Orchestrated graceful shutdown sequence.
+ */
+async function shutdown(signal) {
+  if (shuttingDown) {
+    console.log(`[SHUTDOWN] Duplicate signal ignored: ${signal}`);
+    return;
+  }
+  shuttingDown = true;
+  console.log(`[SHUTDOWN] Signal received: ${signal}`);
+
+  shutdownTimer = setTimeout(() => {
+    console.error(
+      `[SHUTDOWN] Grace period (${GRACEFUL_TIMEOUT_MS}ms) exceeded. Forcing exit.`
+    );
+    process.exit(1);
+  }, GRACEFUL_TIMEOUT_MS).unref();
+
+  try {
+    await closeHttpServer();
+    await closeRabbitMQ();
+    await closeES();
+    await closeMongo();
+  } catch (err) {
+    console.error("[SHUTDOWN] Error during shutdown:", err);
+  }
+
+  clearTimeout(shutdownTimer);
+  console.log("[SHUTDOWN] Sequence complete.");
+
+  if (signal === "SIGUSR2") {
+    // nodemon restart
+    process.kill(process.pid, "SIGUSR2");
+  } else {
+    process.exit(0);
+  }
+}
+
+// System signals
+["SIGINT", "SIGTERM", "SIGUSR2"].forEach((sig) => {
+  process.once(sig, () => shutdown(sig));
 });
 
-process.on('uncaughtException', (error) => {
-  console.error('ERROR GRAVE: Uncaught Exception:', error);
+// Global error traps
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("UNHANDLED REJECTION at:", promise, "reason:", reason);
+});
+process.on("uncaughtException", (error) => {
+  console.error("UNCAUGHT EXCEPTION:", error);
+  shutdown("UNCAUGHT_EXCEPTION");
 });
 
-// Arrancar la aplicación.
 main();

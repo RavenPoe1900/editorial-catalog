@@ -1,3 +1,17 @@
+/**
+ * @fileoverview GraphQL resolvers for authentication.
+ *
+ * Responsibilities:
+ *  - Wrap AuthService methods, perform DTO validation, normalize errors to GraphQL.
+ *  - Provide "me" query which relies on context user (decoded in context builder).
+ *
+ * Error Handling:
+ *  - unwrap() converts service responses into GraphQL return values or throws GraphQLError.
+ *  - Invalid credentials intentionally generic (security best practice).
+ *
+ * Security:
+ *  - @auth directive enforced at schema for me (defense in depth: we still check ctx.user).
+ */
 const AuthService = require("../application/auth.service");
 const { loginDto, registerDto } = require("../domain/auth.dto");
 const userService = require("../../modules/users/application/user.service");
@@ -6,12 +20,6 @@ const { unwrap } = require("../../graphql/error.utils");
 
 const selectOptions = "-password -tests";
 
-/**
- * Auth resolvers:
- * - register/login return access + refresh tokens and the current user.
- * - refreshToken rotates the refresh token and returns user.
- * - me returns the current user (requires @auth).
- */
 module.exports = {
   Query: {
     me: async (_p, _args, ctx) => {
@@ -30,8 +38,7 @@ module.exports = {
   },
 
   Mutation: {
-    register: async (_p, { input }, _ctx) => {
-      // Validación del input de registro
+    register: async (_p, { input }) => {
       if (registerDto?.validateAsync) {
         await registerDto.validateAsync(input, { abortEarly: false });
       }
@@ -39,8 +46,7 @@ module.exports = {
       return unwrap(result, "Failed to register");
     },
 
-    login: async (_p, { input }, _ctx) => {
-      // Validación del input de login
+    login: async (_p, { input }) => {
       if (loginDto?.validateAsync) {
         await loginDto.validateAsync(input, { abortEarly: false });
       }
@@ -48,13 +54,12 @@ module.exports = {
       return unwrap(result, "Failed to login");
     },
 
-    refreshToken: async (_p, { refreshToken }, _ctx) => {
+    refreshToken: async (_p, { refreshToken }) => {
       const result = await AuthService.refreshToken(refreshToken);
       return unwrap(result, "Failed to refresh token");
     },
   },
 
-  // Resolver de campo para incluir el usuario en la respuesta
   AuthTokens: {
     user: (parent) => parent.user,
   },

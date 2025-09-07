@@ -1,8 +1,13 @@
 /**
- * Joi schema for Product creation payload.
- * Validates GS1-like fields included in our model and basic constraints.
+ * @fileoverview Joi schema for Product creation.
+ *
+ * Validation:
+ *  - GTIN pattern + check digit validator (custom).
+ *  - manufacturer nested object required.
+ *
+ * Business:
+ *  - status intentionally excluded (set in service based on actor role).
  */
-
 const Joi = require("joi");
 const { isValidGTIN } = require("./gtin.util");
 

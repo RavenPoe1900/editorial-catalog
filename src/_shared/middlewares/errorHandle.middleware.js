@@ -1,3 +1,16 @@
+/**
+ * @fileoverview Global Express error handling middleware.
+ *
+ * Responsibilities:
+ *  - Normalize errors to JSON shape { status, message, additionalInfo? }.
+ *  - Wrap unknown errors into CustomError with 500 status.
+ *
+ * Security:
+ *  - Does not leak stack traces to clients (production safe). Logging can be expanded.
+ *
+ * Future:
+ *  - Add correlation IDs, structured logging, error grouping.
+ */
 const CustomError = require("../utils/customError");
 const { logger } = require("../utils/logger");
 

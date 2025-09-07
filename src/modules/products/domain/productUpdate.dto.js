@@ -1,8 +1,13 @@
 /**
- * Joi schema for Product update payload.
- * All fields optional; business rules are enforced in the service.
+ * @fileoverview Joi schema for Product update.
+ *
+ * Constraints:
+ *  - All fields optional.
+ *  - status excluded (special approval workflow).
+ *
+ * NOTE:
+ *  - If no effective change detected later, service returns current doc (no audit entry).
  */
-
 const Joi = require("joi");
 const { isValidGTIN } = require("./gtin.util");
 
@@ -33,5 +38,4 @@ module.exports = Joi.object({
   manufacturer: manufacturerSchema.optional(),
   netWeight: Joi.number().min(0).optional(),
   weightUnit: Joi.string().valid("g", "kg", "ml", "l", "oz", "lb").optional(),
-  // status deliberately omitted (status change via approveProduct)
 });

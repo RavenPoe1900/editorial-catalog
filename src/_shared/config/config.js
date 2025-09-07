@@ -1,42 +1,51 @@
 /**
- * config.js
+ * @fileoverview Central configuration aggregator.
  *
- * Centralized configuration loaded from environment variables.
- * - Provides settings for access JWT, refresh JWT, cookie options and MongoDB.
- * - Keep secrets in environment variables for production.
+ * Single source of truth for environment variable access. All other modules
+ * must import from here instead of reading process.env directly.
  *
- * Notes:
- * - REFRESH_JWT.refreshExpires and JWT.expires should be valid values accepted by jsonwebtoken
- *   (e.g. "15m", "7d", "12h").
- * - REFRESH_JWT.maxTokensPerUser controls how many refresh tokens are kept per user.
+ * Groups:
+ *  - SERVER: runtime and startup parameters
+ *  - JWT / REFRESH_JWT: access and refresh token settings
+ *  - COOKIE: cookie options (e.g. potential refresh cookie)
+ *  - MONGODB: database connection URIs
+ *  - JOB: cron / scheduled job settings
+ *  - SEARCH: Elasticsearch connection + retry policy
+ *  - RABBIT: RabbitMQ connection + retry policy
+ *
+ * Security:
+ *  - Do NOT log secrets or the entire config object in production.
+ *  - Default fallback keys must be overridden in real environments.
+ *
+ * Future:
+ *  - Add schema validation with Joi/Zod and fail-fast on invalid/missing values.
+ *  - Load environment-specific .env files (.env.production, etc.).
  */
-
 const dotenv = require("dotenv");
 dotenv.config();
 
-const PORT = process.env.PORT || 3000;
+const SERVER = {
+  port: Number(process.env.PORT || 3000),
+  nodeEnv: process.env.NODE_ENV || "development",
+  corsOrigin: process.env.CORS_ORIGIN || true,
+  gracefulTimeoutMs: Number(process.env.GRACEFUL_TIMEOUT_MS || 10000),
+};
 
-// Access token configuration (short lived)
 const JWT = {
   key: process.env.JWT_SECRET_KEY || "your-secret-key",
   expires: process.env.JWT_SECRET_KEY_EXPIRES || "15m",
 };
 
-// Refresh token configuration (longer lived)
 const REFRESH_JWT = {
   refreshKey: process.env.JWT_REFRESH_KEY || "your-refresh-secret-key",
-  // Accepts values like "7d", "30d", "12h"
   refreshExpires: process.env.JWT_REFRESH_EXPIRES || "7d",
-  // Maximum allowed active refresh tokens per user. Older tokens are pruned.
   maxTokensPerUser: parseInt(process.env.REFRESH_MAX_TOKENS || "5", 10),
 };
 
-// Cookie options if you decide to set refresh tokens as HttpOnly cookies
 const COOKIE = {
-  secure: process.env.COOKIE_SECURE === "true" || false, // set true in production (requires HTTPS)
-  httpOnly: true, // prevents access from JavaScript
+  secure: process.env.COOKIE_SECURE === "true" || false,
+  httpOnly: true,
   sameSite: process.env.COOKIE_SAMESITE || "Lax",
-  // maxAge in ms (optional). If not set, we set cookie expiry from token exp when available.
   maxAge: process.env.COOKIE_MAXAGE ? parseInt(process.env.COOKIE_MAXAGE, 10) : null,
 };
 
@@ -45,17 +54,34 @@ const MONGODB = {
   urlIntegration: process.env.MONGO_URI_INTEGRATION,
 };
 
-const JOB ={
-    cronCleanupRefreshTokens:process.env.CRON_CLEANUP_REFRESH_TOKENS
-}
+const JOB = {
+  cronCleanupRefreshTokens: process.env.CRON_CLEANUP_REFRESH_TOKENS,
+};
+
+const SEARCH = {
+  url: process.env.ELASTICSEARCH_URL || "http://localhost:9200",
+  productIndex: process.env.ELASTICSEARCH_PRODUCT_INDEX || "products",
+  startupRetries: Number(process.env.STARTUP_RETRIES_SEARCH || 10),
+  startupDelayMs: Number(process.env.STARTUP_RETRY_DELAY_MS || 2000),
+};
+
+const RABBIT = {
+  url: process.env.RABBITMQ_URL || "amqp://localhost",
+  exchange: process.env.RABBITMQ_EXCHANGE || "products.events",
+  startupRetries: Number(process.env.STARTUP_RETRIES_RABBIT || 10),
+  startupDelayMs: Number(process.env.STARTUP_RETRY_DELAY_MS || 2000),
+};
 
 module.exports = {
-  PORT,
+  PORT: SERVER.port,
+  NODE_ENV: SERVER.nodeEnv,
+  URL: "/api",
+  SERVER,
   JWT,
   REFRESH_JWT,
   COOKIE,
-  URL: "/api",
-  NODE_ENV: process.env.NODE_ENV,
   MONGODB,
-  JOB
+  JOB,
+  SEARCH,
+  RABBIT,
 };

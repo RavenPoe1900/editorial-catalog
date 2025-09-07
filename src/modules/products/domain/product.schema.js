@@ -1,11 +1,27 @@
+/**
+ * @fileoverview Product schema (GS1-aligned).
+ *
+ * Constraints:
+ *  - gtin: unique, numeric patterns and check digit validation (via isValidGTIN).
+ *  - manufacturer: embedded subdocument (no separate collection).
+ *
+ * Indexing:
+ *  - brand + name compound
+ *  - status + createdAt (for workflow queries)
+ *  - text-like fields kept as strings; search responsibilities offloaded to ES index (separate integration).
+ *
+ * Workflow:
+ *  - status transitions managed in service layer.
+ *
+ * Future:
+ *  - Add slug field for canonical URLs.
+ *  - Add version history or embed lastChange summary.
+ */
 const mongoose = require("mongoose");
 const baseSchema = require("../../../_shared/db/baseSchema");
 const { ProductStatus, WeightUnit } = require("./product.enum");
 const { isValidGTIN } = require("./gtin.util");
 
-/**
- * Embedded schema for manufacturer details.
- */
 const manufacturerSchema = new mongoose.Schema(
   {
     name: {
@@ -24,9 +40,6 @@ const manufacturerSchema = new mongoose.Schema(
   { _id: false }
 );
 
-/**
- * Product schema aligned with GS1 concepts.
- */
 const productSchema = new mongoose.Schema({
   gtin: {
     type: String,
@@ -36,7 +49,6 @@ const productSchema = new mongoose.Schema({
     validate: [
       {
         validator: function (v) {
-          // Strict numeric and allowed lengths
           return /^\d{8}$|^\d{12}$|^\d{13}$|^\d{14}$/.test(v);
         },
         message:
@@ -105,10 +117,8 @@ const productSchema = new mongoose.Schema({
   },
 });
 
-// Base timestamps/soft-delete
 productSchema.add(baseSchema);
 
-// Useful indexes
 productSchema.index({ brand: 1, name: 1 });
 productSchema.index({ status: 1, createdAt: -1 });
 

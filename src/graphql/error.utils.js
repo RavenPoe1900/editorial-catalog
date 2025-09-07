@@ -1,6 +1,21 @@
-// graphql/error.utils.js
-// Small helpers to normalize service-layer results into GraphQL errors.
-
+/**
+ * @fileoverview GraphQL error normalization helpers.
+ *
+ * Responsibilities:
+ *  - Convert service-layer result objects {status, error, data} into GraphQL errors with codes.
+ *  - Provide unwrap() to streamline resolver code (throw on >=400).
+ *
+ * Mapping:
+ *  - 400 -> BAD_REQUEST
+ *  - 401 -> UNAUTHENTICATED
+ *  - 403 -> FORBIDDEN
+ *  - 404 -> NOT_FOUND
+ *  - Else -> INTERNAL_SERVER_ERROR
+ *
+ * Future:
+ *  - Add logging hook for high-severity server errors.
+ *  - Correlate errors with tracing spans.
+ */
 const { GraphQLError } = require("graphql");
 
 function toGraphQLError(result, fallbackMessage = "Error") {

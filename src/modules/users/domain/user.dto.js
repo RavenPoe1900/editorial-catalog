@@ -1,3 +1,12 @@
+/**
+ * @fileoverview Joi schema for User creation.
+ *
+ * Validations:
+ *  - role id existence deferred to an async external validator (ensure referential integrity).
+ *
+ * Security:
+ *  - Basic password length only; strengthen with complexity rule if needed.
+ */
 const Joi = require("joi");
 const validateIdExistence = require("../../../_shared/middlewares/validate/idExist.validate");
 const RoleService = require("../../roles/application/role.service");

@@ -1,3 +1,26 @@
+/**
+ * @fileoverview Generic data access service with soft-delete support.
+ *
+ * Responsibilities:
+ *  - Provide reusable CRUD patterns across models (create, find, update, delete, pagination).
+ *  - Enforce soft-delete semantics (deletedAt != null excluded from queries).
+ *  - Centralize error mapping to structured { status, error } responses.
+ *
+ * Design Decisions:
+ *  - Returns plain objects (status + data) instead of throwing to simplify resolver/controller code.
+ *  - Mongoose-specific logic isolated here -> eases future ORM switching (e.g. Prisma) with same interface.
+ *
+ * Non-Goals:
+ *  - No caching layer (add decorator if needed).
+ *  - No multi-tenancy partitioning (introduce scoped filters when required).
+ *
+ * EXTENSION:
+ *  - Add transaction support (pass session param).
+ *  - Add optimistic concurrency (version key or manual precondition checks).
+ *
+ * SECURITY:
+ *  - Filters always AND with { deletedAt: null } to avoid resurrecting deleted docs accidentally.
+ */
 const mongoose = require("mongoose");
 
 class BaseService {
@@ -5,6 +28,14 @@ class BaseService {
     this.model = model;
   }
 
+  /**
+   * Centralized error classification.
+   * Converts known Mongoose / Mongo driver issues into consistent status codes
+   * so that callers can branch deterministically.
+   *
+   * @param {Error} error
+   * @returns {{status:number,error:string}}
+   */
   handleError(error) {
     if (error instanceof mongoose.Error.ValidationError) {
       return { status: 400, error: `Validation Error: ${error.message}` };
@@ -17,10 +48,7 @@ class BaseService {
     } else if (error.code && error.code === 11000) {
       return { status: 400, error: `Duplicate Key Error: ${error.message}` };
     } else if (error.code && error.code === 121) {
-      return {
-        status: 400,
-        error: `Document Validation Error: ${error.message}`,
-      };
+      return { status: 400, error: `Document Validation Error: ${error.message}` };
     } else if (error.code && error.code === 13435) {
       return { status: 500, error: `Index Build Failure: ${error.message}` };
     } else if (error.code && error.code === 50) {
@@ -34,10 +62,7 @@ class BaseService {
     } else if (error.code && error.code === "ECONNREFUSED") {
       return { status: 500, error: `Connection Refused: ${error.message}` };
     } else if (error.code && error.code === "ENOTFOUND") {
-      return {
-        status: 500,
-        error: `Database Host Not Found: ${error.message}`,
-      };
+      return { status: 500, error: `Database Host Not Found: ${error.message}` };
     } else if (error.code && error.code === "ETIMEDOUT") {
       return { status: 500, error: `Connection Timeout: ${error.message}` };
     } else if (error.code && error.code === "EAI_AGAIN") {
@@ -45,28 +70,36 @@ class BaseService {
     } else if (error.code && error.code === "EADDRINUSE") {
       return { status: 500, error: `Address in Use: ${error.message}` };
     } else {
-      console.log(error)
+      console.log(error);
       return { status: 500, error: `Database Error: ${error.message}` };
     }
   }
 
-  // Corrección: Implementar el método handleDocumentNotFound que faltaba
   handleDocumentNotFound() {
     return { status: 404, error: "Document not found" };
   }
 
+  /**
+   * Applies populate() and select() logic in a shared manner to maintain consistency.
+   *
+   * @param {Array} populates - Populate descriptors
+   * @param {string|null} selectOptions - Mongoose select projection
+   * @param {import('mongoose').Query} query
+   */
   queryPopulate(populates, selectOptions, query) {
     populates.forEach((populateOptions) => {
       query.populate(populateOptions);
     });
-
     if (selectOptions) {
       query.select(selectOptions);
     }
-
     return query;
   }
 
+  /**
+   * Create a document. After save, optionally re-fetch with populate & projection.
+   * @param {object} data
+   */
   async create(data, populateOptions = [], selectOptions = null) {
     try {
       const doc = new this.model(data);
@@ -86,25 +119,44 @@ class BaseService {
     }
   }
 
-  // Mejora: Añadir opción de ordenación
-  async findAll(page = 0, limit = 250, filters = {}, populateOptions = [], selectOptions = null, sort = { createdAt: -1 }) {
-    const pageNum = Math.max(0, parseInt(page, 10) || 0); // 0-based
+  /**
+   * Paginated findAll (0-based page index).
+   * PERFORMANCE: For large pages consider using keyset pagination or cursors.
+   */
+  async findAll(
+    page = 0,
+    limit = 250,
+    filters = {},
+    populateOptions = [],
+    selectOptions = null,
+    sort = { createdAt: -1 }
+  ) {
+    const pageNum = Math.max(0, parseInt(page, 10) || 0);
     const pageSize = Math.min(250, parseInt(limit, 10) || 250);
 
     try {
       let query = this.model.find({ ...filters, deletedAt: null });
 
       if ((populateOptions && populateOptions.length) || selectOptions) {
-        query = this.queryPopulate(populateOptions || [], selectOptions || null, query);
+        query = this.queryPopulate(
+          populateOptions || [],
+          selectOptions || null,
+          query
+        );
       }
 
-      // Aplicar ordenación
       if (sort) {
         query = query.sort(sort);
       }
 
-      const totalDocs = await this.model.countDocuments({ ...filters, deletedAt: null });
-      const docs = await query.skip(pageNum * pageSize).limit(pageSize).exec();
+      const totalDocs = await this.model.countDocuments({
+        ...filters,
+        deletedAt: null,
+      });
+      const docs = await query
+        .skip(pageNum * pageSize)
+        .limit(pageSize)
+        .exec();
 
       return {
         status: 200,
@@ -124,11 +176,9 @@ class BaseService {
   async findById(id, populateOptions = [], selectOptions = null) {
     try {
       let query = this.model.findOne({ _id: id, deletedAt: null });
-
       if (populateOptions.length || selectOptions) {
         query = this.queryPopulate(populateOptions, selectOptions, query);
       }
-
       const doc = await query.exec();
       if (!doc) return { status: 404, error: "Document not found" };
       return { status: 200, data: doc };
@@ -140,11 +190,9 @@ class BaseService {
   async findOneByCriteria(filters, populateOptions = [], selectOptions = null) {
     try {
       let query = this.model.findOne({ ...filters, deletedAt: null });
-
       if (populateOptions.length || selectOptions) {
         query = this.queryPopulate(populateOptions, selectOptions, query);
       }
-
       const doc = await query.exec();
       if (!doc) return { status: 404, error: "Document not found" };
       return { status: 200, data: doc };
@@ -160,11 +208,9 @@ class BaseService {
         { ...updateData, updatedAt: new Date() },
         { new: true }
       );
-
       if (populateOptions.length || selectOptions) {
         query = this.queryPopulate(populateOptions, selectOptions, query);
       }
-
       const updatedDoc = await query.exec();
       if (!updatedDoc) return { status: 404, error: "Document not found" };
       return { status: 200, data: updatedDoc };
@@ -176,17 +222,13 @@ class BaseService {
   async softDeleteById(id, populateOptions = [], selectOptions = null) {
     try {
       let query = this.model.findById(id);
-
       if (populateOptions.length || selectOptions) {
         query = this.queryPopulate(populateOptions, selectOptions, query);
       }
-
       const doc = await query.exec();
       if (!doc) return this.handleDocumentNotFound();
-
       doc.deletedAt = new Date();
       await doc.save();
-
       return { status: 200, message: "Document soft deleted", data: doc };
     } catch (error) {
       return this.handleError(error);
@@ -196,11 +238,9 @@ class BaseService {
   async deleteById(id, populateOptions = [], selectOptions = null) {
     try {
       let query = this.model.findByIdAndDelete(id);
-
       if (populateOptions.length || selectOptions) {
         query = this.queryPopulate(populateOptions, selectOptions, query);
       }
-
       const deletedDoc = await query.exec();
       if (!deletedDoc) return { status: 404, error: "Document not found" };
       return { status: 200, message: "Document deleted" };
@@ -208,8 +248,7 @@ class BaseService {
       return this.handleError(error);
     }
   }
-  
-  // Nueva funcionalidad: operaciones en lote
+
   async createMany(dataArray) {
     try {
       const result = await this.model.insertMany(dataArray);
@@ -218,8 +257,7 @@ class BaseService {
       return this.handleError(error);
     }
   }
-  
-  // Nueva funcionalidad: actualización condicional
+
   async findOneAndUpdate(filter, updateData, options = { new: true }) {
     try {
       const updatedDoc = await this.model.findOneAndUpdate(
@@ -227,8 +265,8 @@ class BaseService {
         { ...updateData, updatedAt: new Date() },
         options
       );
-      
-      if (!updatedDoc && options.new) return { status: 404, error: "Document not found" };
+      if (!updatedDoc && options.new)
+        return { status: 404, error: "Document not found" };
       return { status: 200, data: updatedDoc };
     } catch (error) {
       return this.handleError(error);

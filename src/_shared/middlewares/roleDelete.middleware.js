@@ -1,3 +1,16 @@
+/**
+ * @fileoverview Guard to prevent deletion of a Role in use by Users.
+ *
+ * Responsibilities:
+ *  - Before deleting a role, verify no active user references it.
+ *
+ * Behavior:
+ *  - If at least one user exists referencing the role, returns 400.
+ *
+ * Future:
+ *  - Return count of referencing users for better UX.
+ *  - Offer force flag to cascade or soft-delete dependencies.
+ */
 const UserService = require("../../modules/users/application/user.service");
 
 module.exports = async (req, res, next) => {

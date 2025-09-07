@@ -1,3 +1,12 @@
+# @fileoverview GraphQL SDL for Authentication module.
+#
+# Design Notes:
+#  - Tokens object (AuthTokens) includes embedded User for convenience (avoids extra me query).
+#  - Role is exposed as part of User; access control handled via @auth directive in schema layer.
+#
+# Future Ideas:
+#  - Add mutation revokeRefreshToken(refreshTokenId) for session management.
+#  - Return token expiry times explicitly (e.g., accessTokenExpiresAt).
 """
 Tokens returned by authentication flows.
 Includes the user object for convenience.

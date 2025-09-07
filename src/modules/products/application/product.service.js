@@ -1,8 +1,29 @@
 /**
- * Service layer for Product model with editorial workflow, auditing,
- * RabbitMQ events and Elasticsearch indexing.
+ * @fileoverview ProductService: business logic for product lifecycle.
+ *
+ * Responsibilities:
+ *  - Enforce editorial workflow: provider submissions -> editor approvals.
+ *  - Record audit trails for creates/updates/status changes.
+ *  - Publish domain events to RabbitMQ (best-effort, never block writes).
+ *  - Maintain search index sync in Elasticsearch (best-effort).
+ *
+ * Workflow Rules:
+ *  - Provider-created products start as PENDING_REVIEW.
+ *  - Editor-created products auto-publish (PUBLISHED).
+ *  - Only EDITOR may approve PENDING_REVIEW -> PUBLISHED.
+ *  - Provider can update only own PENDING_REVIEW items.
+ *
+ * Resilience:
+ *  - RabbitMQ + ES updates are non-transactional. Failures are logged but do not abort DB change.
+ *  - Future: consider outbox pattern if at-least-once event emission required.
+ *
+ * Security:
+ *  - Authorization scope (role checks) done here layered on top of GraphQL @auth directive.
+ *
+ * Consistency Model:
+ *  - ES index may be eventually consistent relative to MongoDB.
+ *  - No distributed transaction or saga implemented (deliberate).
  */
-
 const BaseService = require("../../../_shared/service/base.service");
 const Product = require("../domain/product.schema");
 const RoleTypeEnum = require("../../../_shared/enum/roles.enum");
@@ -17,10 +38,17 @@ class ProductService extends BaseService {
     super(Product);
   }
 
+  /**
+   * Build a canonical domain event envelope.
+   * @param {string} type - e.g. 'product.created'
+   * @param {string|ObjectId} aggregateId
+   * @param {object} data - Event-specific payload
+   * @param {object} actor - { userId }
+   */
   buildEventEnvelope(type, aggregateId, data, actor) {
     return {
-      id: `${type}:${aggregateId}:${Date.now()}`,
-      type, // e.g., product.created
+      id: `${type}:${aggregateId}:${Date.now()}`, // Simple unique key; consider ULID for sorting.
+      type,
       occurredAt: new Date().toISOString(),
       aggregateType: "Product",
       aggregateId: String(aggregateId),
@@ -29,6 +57,14 @@ class ProductService extends BaseService {
     };
   }
 
+  /**
+   * Create product enforcing role-based initial status.
+   * Side Effects:
+   *  - Writes product
+   *  - Inserts audit record
+   *  - Publishes rabbit event (best-effort)
+   *  - Indexes in ES (best-effort)
+   */
   async createWithRole(actor, input, populateOptions = [], selectOptions = null) {
     try {
       const role = (actor?.role || "").toLowerCase();
@@ -53,25 +89,30 @@ class ProductService extends BaseService {
         {},
         {
           gtin: created.data.gtin,
-          name: created.data.name,
-          description: created.data.description,
-          brand: created.data.brand,
-          manufacturer: created.data.manufacturer,
-          netWeight: created.data.netWeight,
-          weightUnit: created.data.weightUnit,
-          status: created.data.status,
+            name: created.data.name,
+            description: created.data.description,
+            brand: created.data.brand,
+            manufacturer: created.data.manufacturer,
+            netWeight: created.data.netWeight,
+            weightUnit: created.data.weightUnit,
+            status: created.data.status,
         }
       );
 
-      // Publish event (best-effort)
-      const evt = this.buildEventEnvelope("product.created", created.data._id, {
-        productId: String(created.data._id),
-        status: created.data.status,
-        gtin: created.data.gtin,
-      }, actor);
+      // Event emission (non-critical)
+      const evt = this.buildEventEnvelope(
+        "product.created",
+        created.data._id,
+        {
+          productId: String(created.data._id),
+          status: created.data.status,
+          gtin: created.data.gtin,
+        },
+        actor
+      );
       publishEvent("product.created", evt);
 
-      // Update search index (best-effort)
+      // Index sync (non-critical)
       upsertProduct(created.data);
 
       return created;
@@ -80,6 +121,15 @@ class ProductService extends BaseService {
     }
   }
 
+  /**
+   * Update product with audit diff generation.
+   * Constraints:
+   *  - Providers may only modify owned PENDING_REVIEW items.
+   *  - Providers cannot change status field.
+   *
+   * AUDIT:
+   *  - If no business-relevant fields changed -> returns existing doc (no new audit).
+   */
   async updateWithAudit(actor, id, updates, populateOptions = [], selectOptions = null) {
     try {
       const role = (actor?.role || "").toLowerCase();
@@ -107,6 +157,7 @@ class ProductService extends BaseService {
         JSON.stringify(previous) !== JSON.stringify(next);
 
       if (!hasChanges) {
+        // Return full doc to keep calling layer logic simple (no special code path for "no-op")
         return this.findById(id, populateOptions, selectOptions);
       }
 
@@ -118,16 +169,25 @@ class ProductService extends BaseService {
       );
       if (updated.status >= 400) return updated;
 
-      await ProductChangeService.createAudit(id, actor.userId, "UPDATE", previous, next);
+      await ProductChangeService.createAudit(
+        id,
+        actor.userId,
+        "UPDATE",
+        previous,
+        next
+      );
 
-      // Publish event
-      const evt = this.buildEventEnvelope("product.updated", id, {
-        productId: String(id),
-        changed: Object.keys(updates),
-      }, actor);
+      const evt = this.buildEventEnvelope(
+        "product.updated",
+        id,
+        {
+          productId: String(id),
+          changed: Object.keys(updates),
+        },
+        actor
+      );
       publishEvent("product.updated", evt);
 
-      // Update search index
       upsertProduct(updated.data);
 
       return updated;
@@ -136,6 +196,10 @@ class ProductService extends BaseService {
     }
   }
 
+  /**
+   * Approve pending product (EDITOR only).
+   * State Transition: PENDING_REVIEW -> PUBLISHED
+   */
   async approvePending(actor, id, populateOptions = [], selectOptions = null) {
     try {
       const role = (actor?.role || "").toLowerCase();
@@ -168,14 +232,17 @@ class ProductService extends BaseService {
         { status: ProductStatus.PUBLISHED }
       );
 
-      // Publish event
-      const evt = this.buildEventEnvelope("product.approved", id, {
-        productId: String(id),
-        status: ProductStatus.PUBLISHED,
-      }, actor);
+      const evt = this.buildEventEnvelope(
+        "product.approved",
+        id,
+        {
+          productId: String(id),
+          status: ProductStatus.PUBLISHED,
+        },
+        actor
+      );
       publishEvent("product.approved", evt);
 
-      // Update search index
       upsertProduct(updated.data);
 
       return updated;
@@ -184,6 +251,12 @@ class ProductService extends BaseService {
     }
   }
 
+  /**
+   * Query products with advanced filters (search + brand + status + createdBy).
+   * Uses regex for case-insensitive partial matches (NOT index-friendly at scale).
+   * FUTURE:
+   *  - Consider adding text indexes or leveraging ES for full-text queries.
+   */
   async findAllWithFilters(
     page = 0,
     limit = 10,

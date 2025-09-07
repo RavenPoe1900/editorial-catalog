@@ -1,4 +1,17 @@
 /**
+ * @fileoverview Swagger specification for User endpoints.
+ *
+ * Security:
+ *  - Typically requires bearerAuth (not explicitly declared here – add global security if mandatory).
+ *
+ * Pagination:
+ *  - Returns 'data' array plus 'pagination' object (custom shape, not standard).
+ *
+ * Improvement Ideas:
+ *  - Replace 'data' with 'items' for consistency with GraphQL or viceversa.
+ *  - Add filtering parameters documentation (search, role, email).
+ */
+/**
  * @swagger
  * tags:
  *   - name: Users
@@ -68,26 +81,13 @@
  *         name: page
  *         schema:
  *           type: integer
- *         description: Page number (0-based)
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
- *         description: Items per page
  *     responses:
  *       '200':
  *         description: paginated list of users
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 data:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/UserResponse'
- *                 pagination:
- *                   type: object
  *       '401':
  *         description: Unauthorized
  *       '500':
@@ -106,10 +106,6 @@
  *     responses:
  *       '200':
  *         description: User retrieved
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/UserResponse'
  *       '400':
  *         description: Bad request
  *       '404':

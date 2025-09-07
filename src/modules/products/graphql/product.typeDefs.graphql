@@ -1,3 +1,12 @@
+# @fileoverview Product GraphQL SDL.
+#
+# Concepts:
+#  - Product.changes resolves to latest-first audit trail (ProductChange list).
+#  - Access guarded by @auth with role-based restrictions in SDL.
+#
+# Extension:
+#  - Add filtering args to changes (e.g., operation, date range).
+#  - Add search capabilities via separate resolver integrating Elasticsearch.
 """
 GS1-like manufacturer info.
 """
@@ -38,8 +47,8 @@ type ProductChange {
   productId: ObjectID!
   changedBy: User!
   changedAt: Date!
-  previousValues: String!  # JSON string
-  newValues: String!       # JSON string
+  previousValues: String!  # JSON string snapshot
+  newValues: String!       # JSON string snapshot
   operation: String!
 }
 

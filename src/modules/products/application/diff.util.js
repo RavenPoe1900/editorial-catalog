@@ -1,6 +1,17 @@
 /**
- * Compute a shallow diff between the current product and the attempted updates,
- * restricted to business fields we want to audit (no metadata).
+ * @fileoverview Utilities to compute shallow diffs for product updates.
+ *
+ * Responsibilities:
+ *  - Identify which business fields are changing.
+ *  - Produce previous/next snapshots only when a real change occurs.
+ *
+ * Limitations:
+ *  - Shallow comparison; nested objects compared via JSON.stringify equality.
+ *  - Not suitable for very large nested documents (performance).
+ *
+ * Future:
+ *  - Introduce deep diff with field-level change descriptors.
+ *  - Expose list of changed field names explicitly.
  */
 
 /**
@@ -18,10 +29,9 @@ const BUSINESS_FIELDS = [
 ];
 
 /**
- * Pick a subset of fields from an object.
+ * Pick subset of keys from object (no deep clone).
  * @param {object} obj
  * @param {string[]} keys
- * @returns {object}
  */
 function pick(obj, keys) {
   const out = {};
@@ -34,8 +44,9 @@ function pick(obj, keys) {
 }
 
 /**
- * Compute previous/new snapshots for only the fields that are going to change.
- * @param {object} currentDoc - Current DB document (Mongoose doc or plain)
+ * Compute audit snapshots for fields that changed.
+ *
+ * @param {object} currentDoc - Existing product document (Mongoose doc or plain object)
  * @param {object} updates - Partial update payload
  * @returns {{previous: object, next: object}}
  */

@@ -1,37 +1,46 @@
+/**
+ * @fileoverview GraphQL context builder.
+ *
+ * Responsibilities:
+ *  - Extract Authorization header across multiple adapters (express, graphql-http).
+ *  - Verify access token (if present) and inject { userId, role, roles[] } into context.
+ *  - Fail-soft: invalid/expired token yields anonymous user (user = null).
+ *
+ * Security:
+ *  - Does not throw on invalid token to allow public root fields (protected resolvers use @auth).
+ *  - Ensure reverse proxy sanitizes duplicate Authorization headers in production.
+ *
+ * Extension Points:
+ *  - Add request ID / correlation ID.
+ *  - Attach per-request cache (e.g. DataLoader) here.
+ *  - Add IP / UA logging for auditing.
+ */
 const jwt = require("jsonwebtoken");
 const config = require("../_shared/config/config");
 
-/**
- * Construye el contexto por request para GraphQL.
- * - Extrae el Authorization token desde diferentes formas de request (graphql-http, Express).
- * - No rompe si falta o es inválido; devuelve user = null y la directiva @auth protege campos/ops.
- */
 module.exports.buildContext = async (contextInput) => {
-  // Normaliza el objeto interno de request que puede venir de distintos adaptadores:
-  // - En graphql-http/use/express: la request del handler tiene { headers, raw, ... }
-  // - En Express: es el req clásico con .get() / .header() / .headers
   const reqWrapper = contextInput?.req || contextInput || {};
   const req = reqWrapper.raw || reqWrapper;
 
-  // Helper para leer el header Authorization de forma tolerante
   const readAuthHeader = () => {
     try {
-      // Preferimos métodos si existen (Express)
       if (req && typeof req.get === "function") {
         return req.get("authorization") || req.get("Authorization");
       }
       if (req && typeof req.header === "function") {
         return req.header("authorization") || req.header("Authorization");
       }
-      // graphql-http wrapper u objetos planos
       if (reqWrapper && reqWrapper.headers) {
-        return reqWrapper.headers["authorization"] || reqWrapper.headers["Authorization"];
+        return (
+          reqWrapper.headers["authorization"] ||
+          reqWrapper.headers["Authorization"]
+        );
       }
       if (req && req.headers) {
         return req.headers["authorization"] || req.headers["Authorization"];
       }
-    } catch (_e) {
-      // Ignorar errores de lectura de headers
+    } catch {
+      // Silently ignore header parsing issues
     }
     return null;
   };
@@ -52,13 +61,11 @@ module.exports.buildContext = async (contextInput) => {
             roles: role ? [role] : [],
           };
         }
-      } catch (err) {
-        // Token inválido/expirado: se registra a nivel debug y continúa como anónimo
-        // console.log(`[Auth] Token inválido ignorado: ${err.message}`);
+      } catch {
+        // Invalid token -> anonymous; deliberate non-throw
       }
     }
   }
 
-  // Retornar ambos objetos por conveniencia
   return { req: req, rawReq: reqWrapper.raw || null, user };
 };

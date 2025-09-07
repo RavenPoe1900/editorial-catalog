@@ -1,6 +1,23 @@
-// modules/auth/domain/refresh-token.schema.js
-// Refresh token persistence model holding JTI, expiry and revocation info.
-
+/**
+ * @fileoverview RefreshToken persistence schema.
+ *
+ * Responsibilities:
+ *  - Persist refresh token instances via unique jti.
+ *  - Track expiration (expiresAt) and revocation (revokedAt).
+ *  - Associate token with userId for ownership and rotation logic.
+ *
+ * TTL Behavior:
+ *  - Index on expiresAt with expireAfterSeconds:0 will allow MongoDB to
+ *    remove expired documents automatically (background TTL monitor).
+ *
+ * Security:
+ *  - Tokens are invalid after revocation OR expiration.
+ *  - Does not store the raw token string (only JTI); token secrecy resides client-side.
+ *
+ * Future:
+ *  - Add user-agent / device fingerprint fields for session management UI.
+ *  - Add createdAt for audit (timestamps currently disabled).
+ */
 const mongoose = require("mongoose");
 const baseSchema = require("../../../src/_shared/db/baseSchema");
 

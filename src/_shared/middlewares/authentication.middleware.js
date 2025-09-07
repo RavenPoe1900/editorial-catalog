@@ -1,17 +1,23 @@
 /**
- * authentication.middleware.js
+ * @fileoverview Access token verification (Express middleware).
  *
- * Express middleware to verify access tokens (JWT).
- * - Expects Authorization header: "Bearer <accessToken>" OR a plain token string.
- * - Verifies token using config.JWT.key.
- * - On success attaches the decoded payload to req.user (e.g. { userId, iat, exp }).
+ * Responsibilities:
+ *  - Parse Authorization header (Bearer or raw token).
+ *  - Verify JWT using configured signing key.
+ *  - Attach decoded payload to req.user for downstream handlers.
  *
- * Important:
- * - Do not leak verification error details to clients in production. Logging is fine for debugging.
+ * Failure Mode:
+ *  - Responds 401 on any verification failure (invalid signature, expired, malformed).
+ *
+ * SECURITY:
+ *  - Does not perform role-based authorization (handled separately).
+ *  - Ensure upstream reverse proxy strips conflicting Authorization headers.
+ *
+ * PERFORMANCE:
+ *  - Stateless verification; no DB lookups. Suitable for horizontal scaling.
  */
-
 const jwt = require("jsonwebtoken");
-const config = require("../config/config"); // relative path to config
+const config = require("../config/config");
 
 module.exports = (req, res, next) => {
   const header = req.header("Authorization");
@@ -20,7 +26,7 @@ module.exports = (req, res, next) => {
     return res.status(401).json({ error: "No token, authorization denied" });
   }
 
-  // Support header variants: "Bearer <token>" or just "<token>"
+  // Supports both "Bearer <token>" and "<token>"
   const token = header.startsWith("Bearer ") ? header.substring(7) : header;
 
   if (!token) {
@@ -28,15 +34,10 @@ module.exports = (req, res, next) => {
   }
 
   try {
-    // Verify the access token using the access key
     const decoded = jwt.verify(token, config.JWT.key);
-
-    // Attach the decoded payload for downstream handlers (controllers)
-    req.user = decoded; // controllers expect req.user.userId or req.user
-
+    req.user = decoded; // Downstream controllers expect { userId, role? }
     next();
   } catch (err) {
-    // Log server-side for debugging; do not expose stack traces to clients
     console.error("Auth middleware error:", err.message);
     return res.status(401).json({ error: "Token is not valid" });
   }

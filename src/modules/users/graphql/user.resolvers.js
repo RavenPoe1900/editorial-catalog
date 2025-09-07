@@ -1,3 +1,15 @@
+/**
+ * @fileoverview GraphQL resolvers for User entity.
+ *
+ * Patterns:
+ *  - Validate inputs via DTO.
+ *  - Use service layer (never query model directly here).
+ *  - Provide pagination metadata consistent with other modules.
+ *
+ * Security:
+ *  - Excludes password and tests (selectOptions).
+ *  - Authorization handled by @auth at schema level plus role scoping within it.
+ */
 const UserService = require("../application/user.service");
 const userPopulate = require("../domain/user.populate");
 const createUserDto = require("../domain/user.dto");
@@ -6,18 +18,14 @@ const { unwrap, toGraphQLError } = require("../../../graphql/error.utils");
 
 const selectOptions = "-password -tests";
 
-/**
- * User resolvers: query single/multiple users and mutate them.
- * Reuses service layer and Joi validation. Sensitive fields are filtered.
- */
 module.exports = {
   Query: {
-    user: async (_parent, { id }, _ctx) => {
+    user: async (_parent, { id }) => {
       const result = await UserService.findById(id, userPopulate, selectOptions);
       return unwrap(result, "Failed to fetch user");
     },
 
-    users: async (_parent, { page = 0, limit = 10, filter }, _ctx) => {
+    users: async (_parent, { page = 0, limit = 10, filter }) => {
       const result = await UserService.findAll(
         page,
         limit,
@@ -35,25 +43,25 @@ module.exports = {
         items: data,
         pageInfo: {
           page: pagination.currentPage ?? page,
-          limit: pagination.pageSize ?? limit,
-          totalItems: pagination.totalDocs ?? data.length,
-          totalPages: pagination.totalPages ?? 1,
-          hasNextPage:
-            typeof pagination.currentPage === "number" &&
-            typeof pagination.totalPages === "number"
-              ? pagination.currentPage + 1 < pagination.totalPages
-              : false,
-          hasPrevPage:
-            typeof pagination.currentPage === "number"
-              ? pagination.currentPage > 0
-              : false,
+            limit: pagination.pageSize ?? limit,
+            totalItems: pagination.totalDocs ?? data.length,
+            totalPages: pagination.totalPages ?? 1,
+            hasNextPage:
+              typeof pagination.currentPage === "number" &&
+              typeof pagination.totalPages === "number"
+                ? pagination.currentPage + 1 < pagination.totalPages
+                : false,
+            hasPrevPage:
+              typeof pagination.currentPage === "number"
+                ? pagination.currentPage > 0
+                : false,
         },
       };
     },
   },
 
   Mutation: {
-    createUser: async (_parent, { input }, _ctx) => {
+    createUser: async (_parent, { input }) => {
       await createUserDto.validateAsync(input, { abortEarly: false });
       const result = await UserService.create(
         input,
@@ -63,7 +71,7 @@ module.exports = {
       return unwrap(result, "Failed to create user");
     },
 
-    updateUser: async (_parent, { id, input }, _ctx) => {
+    updateUser: async (_parent, { id, input }) => {
       await updateUserDto.validateAsync(input, { abortEarly: false });
       const result = await UserService.updateById(
         id,
@@ -74,7 +82,7 @@ module.exports = {
       return unwrap(result, "Failed to update user");
     },
 
-    softDeleteUser: async (_parent, { id }, _ctx) => {
+    softDeleteUser: async (_parent, { id }) => {
       const result = await UserService.softDeleteById(
         id,
         userPopulate,

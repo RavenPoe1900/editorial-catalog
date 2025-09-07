@@ -1,6 +1,18 @@
 /**
- * Enumerations related to Product editorial flow and units.
- * Keep string values stable across the system.
+ * @fileoverview Product workflow and weight unit enums.
+ *
+ * ProductStatus:
+ *  - PENDING_REVIEW: Created by provider; awaiting editor approval.
+ *  - PUBLISHED: Visible / approved state.
+ *
+ * OperationType:
+ *  - Used in audit log to classify change.
+ *
+ * WeightUnit:
+ *  - Restricted list for normalization (supports filtering and analytics).
+ *
+ * Future:
+ *  - Add REJECTED or ARCHIVED statuses if workflow expands.
  */
 const ProductStatus = Object.freeze({
   PENDING_REVIEW: "PENDING_REVIEW",

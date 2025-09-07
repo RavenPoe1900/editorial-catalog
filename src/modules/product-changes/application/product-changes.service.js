@@ -1,9 +1,20 @@
 /**
- * Service layer for ProductChange model:
- * - Creates audit entries for product operations.
- * - Queries change history for a given product.
+ * @fileoverview Product change audit service.
+ *
+ * Responsibilities:
+ *  - Create immutable audit entries for product lifecycle changes.
+ *  - Retrieve change history (sorted newest first).
+ *
+ * Data Model:
+ *  - Stores previousValues and newValues as JSON strings (immutable snapshots).
+ *
+ * Consistency:
+ *  - Caller responsible for constructing business field subset (service does not diff).
+ *
+ * Future:
+ *  - Add pagination for very large histories.
+ *  - Add actor enrichment (e.g. caching user lookups).
  */
-
 const BaseService = require("../../../_shared/service/base.service");
 const ProductChange = require("../domain/product-change.schema");
 
@@ -13,12 +24,12 @@ class ProductChangeService extends BaseService {
   }
 
   /**
-   * Create an audit record for a product operation.
-   * @param {string} productId
-   * @param {string} changedBy - User id (ObjectId string)
+   * Create audit record.
+   * @param {string|ObjectId} productId
+   * @param {string|ObjectId} changedBy
    * @param {"CREATE"|"UPDATE"|"STATUS_CHANGE"} operation
-   * @param {object} previous - Previous snapshot (business fields only)
-   * @param {object} next - Next snapshot (business fields only)
+   * @param {object} previous
+   * @param {object} next
    */
   async createAudit(productId, changedBy, operation, previous = {}, next = {}) {
     try {
@@ -37,8 +48,8 @@ class ProductChangeService extends BaseService {
   }
 
   /**
-   * Get change history for a product, latest first.
-   * @param {string} productId
+   * Retrieve audit history in reverse chronological order.
+   * @param {string|ObjectId} productId
    */
   async findByProduct(productId) {
     try {

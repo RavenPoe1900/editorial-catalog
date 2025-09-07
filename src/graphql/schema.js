@@ -1,19 +1,26 @@
-// graphql/schema.js
-// Builds the executable GraphQL schema from:
-// - Root SDL (shared scalars, PageInfo, RoleName enum, @auth directive)
-// - Auto-discovered module SDL and resolvers under "src/**/graphql"
-// - Applies the @auth directive after schema creation
-
+/**
+ * @fileoverview GraphQL executable schema factory.
+ *
+ * Responsibilities:
+ *  - Build root SDL (base scalars, PageInfo, RoleName enum, @auth directive).
+ *  - Load module SDL + resolvers dynamically.
+ *  - Apply @auth directive transformer post-schema creation.
+ *
+ * Consistency:
+ *  - RoleName enum dynamically derived from shared RoleTypeEnum to avoid duplication.
+ *
+ * Extensibility:
+ *  - Add more directives (e.g., @rateLimit, @cacheControl) in same pattern.
+ *
+ * Performance:
+ *  - Schema built once at startup; for hot-reload workflows you could rebuild on demand.
+ */
 const { makeExecutableSchema } = require("@graphql-tools/schema");
 const { loadModuleTypeDefsAndResolvers } = require("./modules.loader");
 const scalars = require("./scalars");
 const RoleTypeEnum = require("../_shared/enum/roles.enum");
 const { authDirectiveSDL, makeAuthDirectiveTransformer } = require("./directives/auth");
 
-/**
- * Build root SDL including shared scalars, PageInfo, RoleName enum and @auth directive.
- * RoleName enum is derived from the shared RoleTypeEnum to avoid duplication.
- */
 function buildRootSDL() {
   const roleValues = Object.values(RoleTypeEnum)
     .map((v) => String(v).trim())
@@ -50,8 +57,7 @@ function buildRootSDL() {
 }
 
 /**
- * Create the executable schema from root SDL and auto-discovered modules.
- * Applies the @auth directive after schema creation.
+ * Assemble and return executable schema.
  */
 async function buildExecutableSchema() {
   const rootTypeDefs = buildRootSDL();

@@ -1,12 +1,30 @@
+/**
+ * @fileoverview Scheduled job to purge expired refresh tokens.
+ *
+ * Strategy:
+ *  - Batch deletes (default 1000 per loop) to avoid large single ops.
+ *  - Continues looping until no more expired tokens found at execution time.
+ *
+ * Efficiency:
+ *  - Uses simple find + deleteMany. For very large sets, consider using deleteMany with a range query directly
+ *    and rely on Mongo's TTL index instead (which already exists if using expiresAt index).
+ *
+ * Safety:
+ *  - Only removes tokens where expiresAt <= now.
+ *  - Ignores revokedAt separation; expired tokens are cleared regardless of revocation state.
+ *
+ * Cron:
+ *  - Schedule read from config.JOB.cronCleanupRefreshTokens (default 02:00 daily).
+ *
+ * Future:
+ *  - Track metrics (#deleted, duration).
+ *  - Add dry-run mode for debugging.
+ */
 const cron = require("node-cron");
 const RefreshToken = require("../../auth/domain/refresh-token.schema");
 const { logger } = require("../utils/logger");
 const config = require("../config/config");
 
-/**
- * Delete expired refresh tokens in batches to avoid long-running deletions.
- * Returns a summary with deletedCount.
- */
 async function cleanupExpiredRefreshTokens({ batchSize = 1000 } = {}) {
   const now = new Date();
   let totalDeleted = 0;
@@ -35,10 +53,6 @@ async function cleanupExpiredRefreshTokens({ batchSize = 1000 } = {}) {
   }
 }
 
-/**
- * Register a cron job to run cleanup periodically.
- * Reads schedule from config.JOB.cronCleanupRefreshTokens or defaults to 02:00 daily.
- */
 function registerCleanupJob() {
   const schedule = config.JOB.cronCleanupRefreshTokens || "0 2 * * *";
 

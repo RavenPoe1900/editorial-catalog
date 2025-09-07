@@ -1,3 +1,8 @@
+# @fileoverview Role GraphQL SDL.
+#
+# Notes:
+#  - Soft deletion still returns deletedAt; clients can filter.
+#  - Pagination uses PageInfo shared pattern.
 """
 System role.
 """
@@ -24,7 +29,7 @@ input RoleUpdateInput {
 }
 
 """
-Supported role filters.
+Supported role filters (extend as needed).
 """
 input RoleFilterInput {
   search: String

@@ -1,11 +1,40 @@
+/**
+ * @fileoverview Dynamic REST route auto-registration.
+ *
+ * Responsibilities:
+ *  - Discover route definition files that follow the "<name>.routers.js" naming convention
+ *    inside any "infrastructure" folder under the source tree.
+ *  - Derive a base path from the file name and mount under /api/<routeName>.
+ *  - Emit structured logs for each mapped route + method for observability.
+ *
+ * Naming Convention:
+ *  modules/<feature>/infrastructure/<feature>.routers.js
+ *  Will be mounted at: /api/<feature>
+ *
+ * Non-Goals:
+ *  - No hot reloading. For dev dynamic watch, integrate with nodemon/tsx.
+ *  - No validation of router contents beyond basic shape check.
+ *
+ * SECURITY:
+ *  - Only internal code should live in 'infrastructure'; if user-uploaded scripts appear here, it's a supply chain risk.
+ *
+ * EXTENSION:
+ *  - Add caching or signature hashing if startup performance degrades with many modules.
+ */
 const path = require("path");
 const findRoutes = require("../service/findRote.service.js");
 const express = require("express");
 const { printEndpoints } = require("../utils/logger.js");
 
+/**
+ * Build and attach discovered route modules to /api.
+ * @param {import('express').Express} app
+ * @returns {import('express').Express}
+ */
 function setupRoot(app) {
   const mainRouter = express.Router();
 
+  // Anchor root: resolved to source root (../../ from _shared/root/)
   const routes = findRoutes(
     path.resolve(__dirname, "../../"),
     "infrastructure",
@@ -14,43 +43,46 @@ function setupRoot(app) {
 
   routes.forEach((routePath) => {
     try {
+      // Dynamic load of router. SAFE: Only internal code repo included.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const mod = require(routePath);
       const route = mod.default || mod;
 
       if (typeof route !== "function") {
-        console.warn(`[Logger] Ruta ignorada (no es un router): ${routePath}`);
+        console.warn(`[RouteLoader] Skipped (not an Express router): ${routePath}`);
         return;
       }
 
+      // Route name derived from filename (e.g. product.routers.js -> 'product')
       const baseName = path.basename(routePath);
       const routeName = baseName.replace(/\.routers?\.js$/i, "").split(".")[0];
-      const basePath = `/api/${routeName}`;
+      const mountBase = `/api/${routeName}`;
 
-      // Montar el router
+      // Mount logical router
       mainRouter.use(`/${routeName}`, route);
 
-      // 🔍 Extraer y mostrar las rutas y métodos del router
+      // Introspect router stack to print endpoints for developer UX
       if (route.stack) {
         route.stack.forEach((layer) => {
           if (layer.route) {
-            // Ruta con método específico (GET, POST, etc.)
-            const fullPath = basePath + layer.route.path;
-            const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase());
-            printEndpoints(fullPath, methods);
+            const fullPath = mountBase + layer.route.path;
+            const methods = Object.keys(layer.route.methods).map((m) =>
+              m.toUpperCase()
+            );
+            printEndpoints(fullPath, methods.join(","));
           } else if (layer.name === "router") {
-            // Caso anidado: sub-routers (menos común, pero manejado)
-            console.log(`[RouterExplorer] Router anidado detectado en /${routeName}, revisa si necesitas más profundidad.`);
+            console.log(
+              `[RouteLoader] Nested router found under /${routeName} (depth>1).`
+            );
           }
         });
       }
     } catch (err) {
-      console.error(`Error al cargar ruta ${routePath}:`, err);
+      console.error(`[RouteLoader] Failed loading ${routePath}:`, err);
     }
   });
 
-  // Montar todo bajo /api
   app.use("/api", mainRouter);
-
   return app;
 }
 

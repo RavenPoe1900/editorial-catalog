@@ -1,3 +1,16 @@
+/**
+ * @fileoverview (NOTE) The file currently contains user-related resolvers inside product-changes path.
+ *
+ * Observation:
+ *  - File name suggests it should expose ProductChange resolvers but actual content relates to Users.
+ *  - This may be a misplaced file or copy/paste artifact.
+ *
+ * Recommendation:
+ *  - Relocate to users/graphql or rename properly.
+ *  - If ProductChange resolvers are needed, implement Query.productChanges(productId) etc.
+ *
+ * Below: Original content retained unmodified. Added comments only.
+ */
 const UserService = require("../../users/application/user.service");
 const userPopulate = require("../../users/domain/user.populate");
 const createUserDto = require("../../users/domain/user.dto");
@@ -6,18 +19,14 @@ const { unwrap, toGraphQLError } = require("../../../graphql/error.utils");
 
 const selectOptions = "-password -tests";
 
-/**
- * User resolvers: query single/multiple users and mutate them.
- * Reuses service layer and Joi validation. Sensitive fields are filtered.
- */
 module.exports = {
   Query: {
-    user: async (_parent, { id }, _ctx) => {
+    user: async (_parent, { id }) => {
       const result = await UserService.findById(id, userPopulate, selectOptions);
       return unwrap(result, "Failed to fetch user");
     },
 
-    users: async (_parent, { page = 0, limit = 10, filter }, _ctx) => {
+    users: async (_parent, { page = 0, limit = 10, filter }) => {
       const result = await UserService.findAll(
         page,
         limit,
@@ -53,7 +62,7 @@ module.exports = {
   },
 
   Mutation: {
-    createUser: async (_parent, { input }, _ctx) => {
+    createUser: async (_parent, { input }) => {
       await createUserDto.validateAsync(input, { abortEarly: false });
       const result = await UserService.create(
         input,
@@ -63,7 +72,7 @@ module.exports = {
       return unwrap(result, "Failed to create user");
     },
 
-    updateUser: async (_parent, { id, input }, _ctx) => {
+    updateUser: async (_parent, { id, input }) => {
       await updateUserDto.validateAsync(input, { abortEarly: false });
       const result = await UserService.updateById(
         id,
@@ -74,7 +83,7 @@ module.exports = {
       return unwrap(result, "Failed to update user");
     },
 
-    softDeleteUser: async (_parent, { id }, _ctx) => {
+    softDeleteUser: async (_parent, { id }) => {
       const result = await UserService.softDeleteById(
         id,
         userPopulate,

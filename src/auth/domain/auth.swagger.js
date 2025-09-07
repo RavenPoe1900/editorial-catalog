@@ -1,4 +1,25 @@
 /**
+ * @fileoverview Swagger (OpenAPI) annotations for Auth endpoints.
+ *
+ * Scope:
+ *  - /auth/register
+ *  - /auth/login
+ *  - /auth/refresh
+ *  - /auth/me
+ *
+ * Notes:
+ *  - These routes handle token lifecycle (access + refresh).
+ *  - Access token is Bearer JWT; refresh token currently expected in body (can be moved to cookie).
+ *
+ * Security Guidance:
+ *  - If you later move refresh token to HttpOnly cookie, update docs accordingly.
+ *  - Avoid exposing full JWT in logs; examples shown here are safe placeholders.
+ *
+ * Future:
+ *  - Add /auth/logout (refresh token revocation) specification.
+ *  - Add /auth/rotate-password if implementing forced password cycles.
+ */
+/**
  * @swagger
  * tags:
  *   - name: Auth

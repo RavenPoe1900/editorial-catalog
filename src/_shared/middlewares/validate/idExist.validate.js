@@ -1,3 +1,16 @@
+/**
+ * @fileoverview Factory for async existence validation inside Joi schemas.
+ *
+ * Usage (Joi .external()):
+ *  role: Joi.string().external(validateIdExistence(RoleService, 'Role not found'))
+ *
+ * Behavior:
+ *  - Calls modelService.findById(value).
+ *  - If not found or error -> returns helpers.message(message).
+ *
+ * Reliability:
+ *  - Silent catch logs suppressed; returns message on exceptions (safe fallback).
+ */
 module.exports = (modelService, message) => {
   return async (value, helpers) => {
     try {

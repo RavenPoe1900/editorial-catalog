@@ -1,12 +1,24 @@
+/**
+ * @fileoverview Product indexing helpers (eventual consistency) for Elasticsearch.
+ *
+ * Functions:
+ *  - ensureProductIndex(): creates index + mappings if missing (idempotent)
+ *  - upsertProduct(): index or update a product document (wait_for refresh in dev)
+ *  - deleteProduct(): remove product doc (ignores 404)
+ *
+ * Index strategy:
+ *  - edge_ngram analyzer for basic autocomplete on name, brand, manufacturer.name
+ *
+ * Limitations:
+ *  - No retries on failures (best effort)
+ *  - MongoDB remains source of truth
+ */
 const { getES } = require("./es.client");
 const { logger } = require("../../utils/logger");
+const config = require("../../config/config");
 
-const INDEX = process.env.ELASTICSEARCH_PRODUCT_INDEX || "products";
+const INDEX = config.SEARCH.productIndex;
 
-/**
- * Ensure index exists with a reasonable mapping for product search.
- * Throws if fails.
- */
 async function ensureProductIndex() {
   const es = getES();
   try {
@@ -35,10 +47,22 @@ async function ensureProductIndex() {
         mappings: {
           properties: {
             gtin: { type: "keyword" },
-            name: { type: "text", analyzer: "edge_ngram_analyzer", search_analyzer: "standard" },
-            brand: { type: "text", analyzer: "edge_ngram_analyzer", search_analyzer: "standard" },
+            name: {
+              type: "text",
+              analyzer: "edge_ngram_analyzer",
+              search_analyzer: "standard",
+            },
+            brand: {
+              type: "text",
+              analyzer: "edge_ngram_analyzer",
+              search_analyzer: "standard",
+            },
             description: { type: "text" },
-            "manufacturer.name": { type: "text", analyzer: "edge_ngram_analyzer", search_analyzer: "standard" },
+            "manufacturer.name": {
+              type: "text",
+              analyzer: "edge_ngram_analyzer",
+              search_analyzer: "standard",
+            },
             "manufacturer.code": { type: "keyword" },
             "manufacturer.country": { type: "keyword" },
             netWeight: { type: "float" },
@@ -60,9 +84,6 @@ async function ensureProductIndex() {
   }
 }
 
-/**
- * Map Product mongoose doc/plain object to ES doc.
- */
 function mapProduct(doc) {
   const src = doc?.toObject?.() ? doc.toObject() : doc;
   return {
@@ -80,9 +101,6 @@ function mapProduct(doc) {
   };
 }
 
-/**
- * Upsert product into ES index (best-effort at runtime).
- */
 async function upsertProduct(doc) {
   try {
     const es = getES();
@@ -92,15 +110,20 @@ async function upsertProduct(doc) {
       document: mapProduct(doc),
       refresh: "wait_for",
     });
-    logger(`[Elasticsearch] upsert product ${doc._id || doc.id}`, "INFO:", "green");
+    logger(
+      `[Elasticsearch] upsert product ${doc._id || doc.id}`,
+      "INFO:",
+      "green"
+    );
   } catch (err) {
-    logger(`[Elasticsearch] upsert error: ${err?.message}`, "WARN:", "yellow");
+    logger(
+      `[Elasticsearch] upsert error: ${err?.message}`,
+      "WARN:",
+      "yellow"
+    );
   }
 }
 
-/**
- * Delete product from ES index (best-effort).
- */
 async function deleteProduct(id) {
   try {
     const es = getES();
@@ -112,7 +135,11 @@ async function deleteProduct(id) {
     logger(`[Elasticsearch] delete product ${id}`, "INFO:", "green");
   } catch (err) {
     if (err?.meta?.statusCode !== 404) {
-      logger(`[Elasticsearch] delete error: ${err?.message}`, "WARN:", "yellow");
+      logger(
+        `[Elasticsearch] delete error: ${err?.message}`,
+        "WARN:",
+        "yellow"
+      );
     }
   }
 }

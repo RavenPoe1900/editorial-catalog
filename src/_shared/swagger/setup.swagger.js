@@ -1,4 +1,21 @@
-// _shared/swagger/setup.swagger.js
+/**
+ * @fileoverview Swagger (OpenAPI) setup.
+ *
+ * Responsibilities:
+ *  - Generate OpenAPI spec from JSDoc-style annotations (*.swagger.js) discovered under any domain folder.
+ *  - Serve interactive documentation via swagger-ui-express at /api-docs.
+ *
+ * Design Choices:
+ *  - JSDoc scanning via custom route discovery (findRoutes on ".swagger.js").
+ *  - Custom bearer + refreshCookieAuth security schemes.
+ *
+ * Security:
+ *  - Do not expose operational or internal admin endpoints unless intentionally documented.
+ *
+ * Future:
+ *  - Add versioning (e.g., /v1 vs /v2).
+ *  - Add OpenAPI JSON export route (/openapi.json).
+ */
 const swaggerJsdoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
 const path = require("path");
@@ -29,40 +46,38 @@ function setupSwagger(app, port) {
           type: "http",
           scheme: "bearer",
           bearerFormat: "JWT",
-          description: "Usar: Bearer <access_token>",
+          description: "Use: Bearer <access_token>",
         },
         refreshCookieAuth: {
           type: "apiKey",
           in: "cookie",
           name: "refreshToken",
           description:
-            "Refresh token enviado vía cookie HttpOnly llamada `refreshToken`. Swagger no puede crear cookies HttpOnly; ver descripción del endpoint.",
+            "Refresh token sent via HttpOnly cookie named `refreshToken`. Not directly settable via Swagger UI.",
         },
       },
     },
     tags: [
-      { name: "Auth", description: "Autenticación y gestión de tokens" },
-      { name: "Users", description: "Usuarios y perfiles" },
-      { name: "Health", description: "Health checks y estado del sistema" },
+      { name: "Auth", description: "Authentication and token management" },
+      { name: "Users", description: "User CRUD and profile operations" },
+      { name: "Health", description: "Health checks" },
     ],
-    // Opcional: si quieres requerir bearer por defecto para todas las rutas:
-    // security: [{ bearerAuth: [] }],
   };
 
   const swaggerOptions = {
     swaggerDefinition,
-    apis: routes, // tus archivos .swagger.js ya existentes
+    apis: routes,
   };
 
   const specs = swaggerJsdoc(swaggerOptions);
 
   const swaggerUiOptions = {
     swaggerOptions: {
-      persistAuthorization: true, // permite persistir el token ingresado en "Authorize"
+      persistAuthorization: true,
       displayRequestDuration: true,
       docExpansion: "none",
-      // Para que Swagger UI incluya cookies (importante para /auth/refresh)
       requestInterceptor: (req) => {
+        // Include cookies (e.g., for refresh token flows)
         req.credentials = "include";
         return req;
       },

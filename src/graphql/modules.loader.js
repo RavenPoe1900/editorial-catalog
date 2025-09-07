@@ -1,33 +1,37 @@
-// graphql/modules.loader.js
-// Auto-discovers GraphQL modules strictly under "src/**/graphql" folders.
-// It loads:
-// - SDL files: src/**/graphql/*.typeDefs.graphql
-// - Resolvers: src/**/graphql/*.resolvers.js
-//
-// Notes:
-// - Ignores node_modules, build outputs and VCS directories.
-// - Returns aggregated SDL array and a merged resolvers map.
-// - Keep it simple and deterministic (no external config needed).
-
+/**
+ * @fileoverview GraphQL module auto-loader.
+ *
+ * Responsibilities:
+ *  - Discover SDL (*.typeDefs.graphql) and resolver files (*.resolvers.js) under src//graphql.
+ *  - Merge all resolvers into a single resolver map.
+ *  - Return arrays of type definitions for schema assembly.
+ *
+ * Design Choices:
+ *  - fast-glob used for performance and flexibility.
+ *  - Cache bust (delete require.cache) to support dev-time reload with nodemon.
+ *
+ * Non-Goals:
+ *  - No circular dependency detection.
+ *  - No schema validation here (handled by GraphQL build process).
+ *
+ * Performance:
+ *  - Single pass at startup; acceptable overhead.
+ *
+ * Future:
+ *  - Add optional module manifest for production deterministic loading.
+ *  - Add hashing to detect changes and skip reloads.
+ */
 const fs = require("fs");
 const fg = require("fast-glob");
 const path = require("path");
 
-/**
- * Read a UTF-8 text file.
- * @param {string} filePath Absolute path to the file
- * @returns {string} File contents as UTF-8 string
- */
 function readText(filePath) {
   return fs.readFileSync(filePath, "utf8");
 }
 
 /**
- * Deep-merge resolver maps of shape:
- * { Query: {...}, Mutation: {...}, TypeName: {...} }
- * @param {Record<string, any>} target Destination map
- * @param {Record<string, any>} source Source map
- * @returns {Record<string, any>} Merged map
+ * Deep merge resolver maps.
+ * Strategy: object property overwrite — last writer wins for conflicts.
  */
 function deepMergeResolvers(target, source) {
   for (const key of Object.keys(source || {})) {
@@ -43,10 +47,9 @@ function deepMergeResolvers(target, source) {
 }
 
 /**
- * Auto-discover SDL (*.typeDefs.graphql) and resolvers (*.resolvers.js)
- * strictly inside "src/../graphql directories.
- * @param {string} rootDir Project root directory (default: process.cwd())
- * @returns {Promise<{ moduleTypeDefs: string[], resolvers: Record<string, any> }>}
+ * Discover GraphQL module artifacts.
+ * @param {string} rootDir
+ * @returns {Promise<{ moduleTypeDefs: string[], resolvers: Record<string,any> }>}
  */
 async function loadModuleTypeDefsAndResolvers(rootDir = process.cwd()) {
   const ignore = [
@@ -59,7 +62,6 @@ async function loadModuleTypeDefsAndResolvers(rootDir = process.cwd()) {
     "**/.turbo/**",
   ];
 
-  // Limit discovery to src/**/graphql folders
   const typeDefFiles = await fg(["src/**/graphql/*.typeDefs.graphql"], {
     cwd: rootDir,
     ignore,
@@ -76,7 +78,6 @@ async function loadModuleTypeDefsAndResolvers(rootDir = process.cwd()) {
 
   const resolvers = {};
   for (const file of resolverFiles) {
-    // Clear module cache to support dev reloads with nodemon
     delete require.cache[require.resolve(file)];
     const mod = require(file);
     deepMergeResolvers(resolvers, mod);

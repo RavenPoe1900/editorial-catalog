@@ -1,11 +1,31 @@
+/**
+ * @fileoverview ProductChange audit schema.
+ *
+ * Purpose:
+ *  - Immutable audit trail for product state transitions and edits.
+ *
+ * Fields:
+ *  - previousValues / newValues stored as JSON strings for snapshot fidelity.
+ *  - operation limited to enumerated values ("CREATE", "UPDATE", "STATUS_CHANGE").
+ *
+ * Indexes:
+ *  - productId + changedAt (desc sorting facilitated)
+ *  - productId alone for quick history filtering
+ *
+ * Validation:
+ *  - Each JSON string must parse successfully (guarantees consumers can rely on parse).
+ *
+ * Soft Delete:
+ *  - baseSchema attaches deletedAt (though typically audits are not soft-deleted; retained for uniformity).
+ *
+ * Future:
+ *  - Consider compression if snapshots get large.
+ *  - Add diff metadata for faster UI rendering.
+ */
 const mongoose = require("mongoose");
 const baseSchema = require("../../../_shared/db/baseSchema");
 const { OperationType } = require("../../products/domain/product.enum");
 
-/**
- * Stores an audit record for a product change.
- * previousValues and newValues are persisted as JSON strings for immutability.
- */
 const productChangeSchema = new mongoose.Schema({
   productId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -39,7 +59,7 @@ const productChangeSchema = new mongoose.Schema({
           return false;
         }
       },
-      message: "El formato de previousValues debe ser JSON válido",
+      message: "previousValues must be valid JSON",
     },
   },
 
@@ -55,7 +75,7 @@ const productChangeSchema = new mongoose.Schema({
           return false;
         }
       },
-      message: "El formato de newValues debe ser JSON válido",
+      message: "newValues must be valid JSON",
     },
   },
 
@@ -63,7 +83,7 @@ const productChangeSchema = new mongoose.Schema({
     type: String,
     enum: {
       values: Object.values(OperationType),
-      message: "Tipo de operación no válido",
+      message: "Invalid operation type",
     },
     required: true,
   },

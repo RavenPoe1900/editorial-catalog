@@ -1,8 +1,14 @@
 /**
- * Joi schema for Product update payload.
- * All fields optional; business rules are enforced in the service.
+ * @fileoverview Joi schema for validating product update payload (audit module context).
+ *
+ * Notes:
+ *  - Mirrors product update constraints but leaves semantic status changes
+ *    to dedicated operations.
+ *  - All fields optional to support partial updates.
+ *
+ * Reuse:
+ *  - For audit-specific processing you can reuse this or the main productUpdate schema.
  */
-
 const Joi = require("joi");
 
 const manufacturerSchema = Joi.object({
@@ -24,5 +30,4 @@ module.exports = Joi.object({
   manufacturer: manufacturerSchema.optional(),
   netWeight: Joi.number().min(0).optional(),
   weightUnit: Joi.string().valid("g", "kg", "ml", "l", "oz", "lb").optional(),
-  // status deliberately omitted (status change via approveProduct)
 });

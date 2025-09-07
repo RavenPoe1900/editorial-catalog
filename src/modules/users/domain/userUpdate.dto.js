@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Joi schema for User update.
+ *
+ * All fields optional; only validated if present.
+ * Role existence validated externally if provided.
+ */
 const Joi = require("joi");
 const validateIdExistence = require("../../../_shared/middlewares/validate/idExist.validate");
 const RoleService = require("../../roles/application/role.service");

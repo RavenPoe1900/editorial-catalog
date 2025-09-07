@@ -1,15 +1,19 @@
 /**
- * user.service.js
+ * @fileoverview UserService: user-specific data access helpers.
  *
- * Service layer for User model. Extends a generic BaseService that provides
- * common CRUD and query helpers. This file adds user-specific helpers:
- * - findByEmail(email, includePassword=false): returns user, optionally selecting password
+ * Extends:
+ *  - BaseService for generic CRUD + soft delete.
  *
- * Notes:
- * - By default the model queries filter out soft-deleted documents (deletedAt != null).
- * - includePassword toggles selecting the +password field (assuming password has select: false in schema).
+ * Adds:
+ *  - findByEmail(email, includePassword=false)
+ *
+ * Security:
+ *  - When includePassword=false (default) the password field is excluded.
+ *  - Upstream callers must sanitize outputs (GraphQL resolvers already exclude sensitive fields).
+ *
+ * Future:
+ *  - Add lastLogin tracking, login attempt throttling logic, etc.
  */
-
 const BaseService = require("../../../_shared/service/base.service.js");
 const User = require("../domain/user.schema.js");
 
@@ -21,8 +25,8 @@ class UserService extends BaseService {
   /**
    * Find a user by email.
    * @param {string} email
-   * @param {boolean} includePassword - when true, select the password field for comparison
-   * @returns {Promise<Document|null>} Mongoose document (or wrapper in BaseService usage)
+   * @param {boolean} includePassword - Include password hash for credential validation use case.
+   * @returns {{status:number,data?:any,error?:string}}
    */
   async findByEmail(email, includePassword = false) {
     try {

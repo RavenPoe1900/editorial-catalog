@@ -1,20 +1,32 @@
+/**
+ * @fileoverview GraphQL resolvers for Role entity.
+ *
+ * Responsibilities:
+ *  - Wrap RoleService CRUD operations.
+ *  - Provide pagination metadata (derived from service pagination object).
+ *  - Enforce validation via Joi DTOs (create/update).
+ *
+ * Error Handling:
+ *  - unwrap() throws GraphQL errors where appropriate.
+ *  - Explicit conversion for list operations to GraphQL page structure.
+ *
+ * Future:
+ *  - Add bulk role operations.
+ *  - Add permission enumeration per role if/when supported.
+ */
 const RoleService = require("../application/role.service");
 const roleCreateDto = require("../domain/role.dto");
 const roleUpdateDto = require("../domain/roleUpdate.dto");
 const { unwrap, toGraphQLError } = require("../../../graphql/error.utils");
 
-/**
- * Role resolvers: query single/multiple roles and mutate them.
- * Reuses service layer and Joi validation.
- */
 module.exports = {
   Query: {
-    role: async (_p, { id }, _ctx) => {
+    role: async (_p, { id }) => {
       const result = await RoleService.findById(id);
       return unwrap(result, "Failed to fetch role");
     },
 
-    roles: async (_p, { page = 0, limit = 10, filter }, _ctx) => {
+    roles: async (_p, { page = 0, limit = 10, filter }) => {
       const result = await RoleService.findAll(page, limit, filter);
       if (result.status >= 400) {
         throw toGraphQLError(result, "Failed to list roles");
@@ -43,24 +55,24 @@ module.exports = {
   },
 
   Mutation: {
-    createRole: async (_p, { input }, _ctx) => {
+    createRole: async (_p, { input }) => {
       await roleCreateDto.validateAsync(input, { abortEarly: false });
       const result = await RoleService.create(input);
       return unwrap(result, "Failed to create role");
     },
 
-    updateRole: async (_p, { id, input }, _ctx) => {
+    updateRole: async (_p, { id, input }) => {
       await roleUpdateDto.validateAsync(input, { abortEarly: false });
       const result = await RoleService.updateById(id, input);
       return unwrap(result, "Failed to update role");
     },
 
-    softDeleteRole: async (_p, { id }, _ctx) => {
+    softDeleteRole: async (_p, { id }) => {
       const result = await RoleService.softDeleteById(id);
       return unwrap(result, "Failed to soft delete role");
     },
 
-    deleteRolePermanent: async (_p, { id }, _ctx) => {
+    deleteRolePermanent: async (_p, { id }) => {
       const result = await RoleService.deleteById(id);
       if (result.status >= 400) {
         throw toGraphQLError(result, "Failed to delete role");

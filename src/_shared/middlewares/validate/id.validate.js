@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Middleware to validate 24-char hex Mongo ObjectId in req.params.id.
+ *
+ * Returns:
+ *  - 400 if invalid format.
+ *  - Calls next() if valid.
+ */
 const Joi = require("joi");
 
 const idSchema = Joi.string().length(24).hex().required();
